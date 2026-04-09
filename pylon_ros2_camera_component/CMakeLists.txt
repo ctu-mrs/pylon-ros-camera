@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.27)
 
 project(pylon_ros2_camera_component)
 
+if(POLICY CMP0144)
+	cmake_policy(SET CMP0144 NEW)
+	set(CMAKE_POLICY_DEFAULT_CMP0144 NEW)
+endif()
+
 # Default to C99
 if(NOT CMAKE_C_STANDARD)
   set(CMAKE_C_STANDARD 99)
@@ -51,7 +56,29 @@ find_package(rclcpp_components REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
+set(_pylon_ros2_camera_component_had_flann_root FALSE)
+set(_pylon_ros2_camera_component_had_flann_root_cache FALSE)
+if(DEFINED FLANN_ROOT)
+	set(_pylon_ros2_camera_component_had_flann_root TRUE)
+	set(_pylon_ros2_camera_component_flann_root "${FLANN_ROOT}")
+	unset(FLANN_ROOT)
+endif()
+if(DEFINED CACHE{FLANN_ROOT})
+	set(_pylon_ros2_camera_component_had_flann_root_cache TRUE)
+	set(_pylon_ros2_camera_component_flann_root_cache "$CACHE{FLANN_ROOT}")
+	unset(FLANN_ROOT CACHE)
+endif()
 find_package(pcl_ros REQUIRED)
+if(_pylon_ros2_camera_component_had_flann_root)
+	set(FLANN_ROOT "${_pylon_ros2_camera_component_flann_root}")
+	unset(_pylon_ros2_camera_component_flann_root)
+endif()
+if(_pylon_ros2_camera_component_had_flann_root_cache)
+	set(FLANN_ROOT "${_pylon_ros2_camera_component_flann_root_cache}" CACHE PATH "" FORCE)
+	unset(_pylon_ros2_camera_component_flann_root_cache)
+endif()
+unset(_pylon_ros2_camera_component_had_flann_root)
+unset(_pylon_ros2_camera_component_had_flann_root_cache)
 find_package(camera_info_manager REQUIRED)
 find_package(image_geometry REQUIRED)
 find_package(image_transport REQUIRED)
@@ -110,8 +137,12 @@ add_library(${PROJECT_NAME} SHARED
 target_include_directories(${PROJECT_NAME}
 	PUBLIC
     	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-		$<BUILD_INTERFACE:${Pylon_INCLUDE_DIRS}>
     	$<INSTALL_INTERFACE:include>
+)
+
+target_include_directories(${PROJECT_NAME} SYSTEM
+	PUBLIC
+		$<BUILD_INTERFACE:${Pylon_INCLUDE_DIRS}>
 )
 
 target_compile_definitions(${PROJECT_NAME}
@@ -136,10 +167,9 @@ add_executable(ip_auto_config
 	${CMAKE_CURRENT_SOURCE_DIR}/src/tools/ip_auto_config.cpp
 )
 
-target_include_directories(ip_auto_config
-	PUBLIC
-		$<BUILD_INTERFACE:${Pylon_INCLUDE_DIRS}>
-    	$<INSTALL_INTERFACE:include>
+target_include_directories(ip_auto_config SYSTEM
+	PRIVATE
+		${Pylon_INCLUDE_DIRS}
 )
 
 target_link_libraries(ip_auto_config
@@ -151,10 +181,9 @@ add_executable(set_device_user_id
 	${CMAKE_CURRENT_SOURCE_DIR}/src/tools/set_device_user_id.cpp
 )
 
-target_include_directories(set_device_user_id
-	PUBLIC
-		$<BUILD_INTERFACE:${Pylon_INCLUDE_DIRS}>
-    	$<INSTALL_INTERFACE:include>
+target_include_directories(set_device_user_id SYSTEM
+	PRIVATE
+		${Pylon_INCLUDE_DIRS}
 )
 
 target_link_libraries(set_device_user_id
