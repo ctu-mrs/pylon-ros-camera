@@ -135,8 +135,12 @@ public:
 
     virtual std::string setTriggerSelector(const int& mode) override;
     virtual std::string setTriggerSource(const int& source) override;
+    virtual std::string setOverlapMode(const bool& value) override;
 
     virtual std::string setLineSelector(const int& value) override;
+    virtual std::string setLineFormat(const int& value) override;
+
+    virtual std::string setAutoFunctionROISelector(const int& mode) override;
 
     virtual std::string setDeviceLinkThroughputLimitMode(const bool& turnOn) override;
     virtual std::string setDeviceLinkThroughputLimit(const int& limit) override;
@@ -905,6 +909,13 @@ std::string PylonROS2BlazeCamera::setTriggerSource(const int& source)
     return "done";
 }
 
+std::string PylonROS2BlazeCamera::setOverlapMode(const bool& value)
+{
+    (void)value;
+    RCLCPP_WARN(LOGGER_BLAZE, "Trying to set overlap mode: there's no overlap mode parameter with the blaze camera");
+    return "No overlap mode parameter with the blaze";
+}
+
 std::string PylonROS2BlazeCamera::setLineSelector(const int& value)
 {
     try
@@ -937,6 +948,20 @@ std::string PylonROS2BlazeCamera::setLineSelector(const int& value)
     }
 
     return "done";
+}
+
+std::string PylonROS2BlazeCamera::setLineFormat(const int& value)
+{
+    (void)value;
+    RCLCPP_WARN(LOGGER_BLAZE, "Trying to set line format: there's no line format parameter with the blaze camera");
+    return "No line format parameter with the blaze";
+}
+
+std::string PylonROS2BlazeCamera::setAutoFunctionROISelector(const int& mode)
+{
+    (void)mode;
+    RCLCPP_WARN(LOGGER_BLAZE, "Trying to set auto function ROI selector: there's no auto function ROI selector parameter with the blaze camera");
+    return "No auto function ROI selector parameter with the blaze";
 }
 
 std::string PylonROS2BlazeCamera::setDeviceLinkThroughputLimitMode(const bool& turnOn)

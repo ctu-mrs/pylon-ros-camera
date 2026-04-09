@@ -6,6 +6,12 @@
     #  The tf frame under which the images were published
     camera_frame: pylon_camera
 
+    #  Launch-file defaults. These are consumed by the launch script when the
+    #  corresponding launch arguments are not passed explicitly.
+    # camera_id: my_camera
+    # node_name: pylon_ros2_camera_node
+    # respawn: false
+
     #  The DeviceUserID of the camera. If empty, the first camera found in the
     #  device list will be used
     device_user_id: ""
@@ -33,9 +39,10 @@
 
     #  The desired publisher frame rate if listening to the topics.
     #  This parameter can only be set once at startup.
+    #  Set to -1 to publish images as fast as possible.
     #  Calling the GrabImages-Action can result in a higher framerate.
     #  The maximum possible frame rate is displayed when starting the driver.
-    frame_rate: 500.0
+    frame_rate: -1.0
 
     #  Mode of camera's shutter.
     #  The supported modes are "rolling", "global" and "global_reset"
@@ -115,6 +122,16 @@
     #  should be good (1500 for single-board computer)
     #  mtu_size: 3000
 
+    #  The startup user set. This can also be overridden by the launch argument.
+    # startup_user_set: CurrentSetting
+    
+    #  These publisher flags can be configured either here or via launch args.
+    # enable_status_publisher: false
+    # enable_current_params_publisher: false
+
+    #  Keep the stream grabber fed at high USB3 frame rates.
+    grab_strategy: 0
+
     #  the inter-packet delay in ticks to prevent frame loss, support the network bandwith priorisation
     #  generally needs to modified if more than one cameras is involved or if hardware is not performing well 
     #  raise inter-packet delay (GevSCPD) for solving error: 'the buffer was incompletely grabbed'
@@ -132,3 +149,112 @@
     #  you can use the frame transmission delay parameter to stagger the
     #  start of image data transmissions from each camera.
     #  frame_transmission_delay: 0
+
+    ##########################################################################
+    ################ Service-Mirrored SDK Startup Parameters #################
+    ##########################################################################
+    # These optional parameters mirror the node's SDK services and are applied
+    # once during startup after the camera opens and before grabbing starts.
+    # Only parameters present in your YAML are applied.
+    # Set only values supported by your specific camera model; unsupported
+    # overrides can cause startup to fail.
+
+    # User sets and image geometry.
+    # user_set_selector: 0
+    # user_set_default_selector: 0
+    # offset_x: 0
+    # offset_y: 0
+    # roi_x_offset: 0
+    # roi_y_offset: 0
+    # roi_width: 0
+    # roi_height: 0
+    # black_level: 0
+    # reverse_x: false
+    # reverse_y: false
+
+    # Image processing and color pipeline.
+    # pgi_mode: false
+    # demosaicing_mode: 0
+    # noise_reduction: 0.0
+    # sharpness_enhancement: 0.0
+    # light_source_preset: 0
+    # white_balance_auto: 0
+    # auto_function_roi_selector: 0
+    # gamma_selector: 0
+    # gamma_activation: false
+
+    # Acquisition and trigger control.
+    # sensor_readout_mode: 0
+    # acquisition_frame_count: 0
+    # trigger_selector: 0
+    # trigger_mode: false
+    # overlap_mode: false
+    # trigger_source: 0
+    # trigger_activation: 0
+    # trigger_delay: 0.0
+
+    # Line I/O.
+    # line_selector: 0
+    # line_mode: 0
+    # line_source: 0
+    # line_format: 0
+    # line_inverter: false
+    # line_debouncer_time: 0.0
+
+    # Transport and stream tuning.
+    # device_link_throughput_limit_mode: false
+    # device_link_throughput_limit: 0
+    # max_transfer_size: 0
+    # output_queue_size: 0
+    # max_num_buffer: 0
+
+    # Chunk data.
+    # chunk_mode_active: false
+    # chunk_selector: 0
+    # chunk_enable: false
+    # chunk_exposure_time: 0.0
+
+    # Timers and periodic signals.
+    # timer_selector: 0
+    # timer_trigger_source: 0
+    # timer_duration: 0.0
+    # periodic_signal_period: 0.0
+    # periodic_signal_delay: 0.0
+
+    # PTP and synchronized free run.
+    # enable_ptp_management_protocol: false
+    # enable_two_step_operation: false
+    # enable_ptp: false
+    # ptp_priority: 0
+    # ptp_profile: 0
+    # ptp_network_mode: 0
+    # ptp_uc_port_address_index: 0
+    # ptp_uc_port_address: 0
+    # enable_sync_free_run_timer: false
+    # sync_free_run_timer_start_time_low: 0
+    # sync_free_run_timer_start_time_high: 0
+    # sync_free_run_timer_trigger_rate_abs: 0.0
+
+    # blaze and 3D processing.
+    # depth_min: 0
+    # depth_max: 0
+    # temporal_filter_strength: 0
+    # outlier_removal_threshold: 0
+    # outlier_removal_tolerance: 0
+    # ambiguity_filter_threshold: 0
+    # confidence_threshold: 0
+    # intensity_calculation: 0
+    # exposure_time_selector: 0
+    # operating_mode: 0
+    # multi_camera_channel: 0
+    # enable_spatial_filter: false
+    # enable_temporal_filter: false
+    # enable_outlier_removal: false
+    # enable_ambiguity_filter: false
+    # enable_thermal_drift_correction: false
+    # enable_distortion_correction: false
+    # enable_acquisition_frame_rate: false
+    # acquisition_frame_rate: 0.0
+    # scan_3d_calibration_offset: 0.0
+    # enable_hdr_mode: false
+    # enable_fast_mode: false

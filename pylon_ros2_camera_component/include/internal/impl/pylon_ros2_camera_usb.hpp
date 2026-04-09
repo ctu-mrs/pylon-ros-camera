@@ -59,6 +59,7 @@ struct USBCameraTrait
     typedef Basler_UniversalCameraParams::SensorReadoutModeEnums SensorReadoutModeEnums;
     typedef Basler_UniversalCameraParams::TriggerSelectorEnums TriggerSelectorEnums;
     typedef Basler_UniversalCameraParams::TriggerModeEnums TriggerModeEnums;
+    typedef Basler_UniversalCameraParams::OverlapModeEnums OverlapModeEnums;
     typedef Basler_UniversalCameraParams::TriggerSourceEnums TriggerSourceEnums;
     typedef Basler_UniversalCameraParams::TriggerActivationEnums TriggerActivationEnums;
     typedef Basler_UniversalCameraParams::LineSelectorEnums LineSelectorEnums;

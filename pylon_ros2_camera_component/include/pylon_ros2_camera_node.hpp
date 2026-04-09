@@ -46,6 +46,7 @@
 #include "pylon_ros2_camera_interfaces/srv/get_integer_value.hpp"
 #include "pylon_ros2_camera_interfaces/srv/get_float_value.hpp"
 #include "pylon_ros2_camera_interfaces/srv/get_string_value.hpp"
+#include "pylon_ros2_camera_interfaces/srv/get_capabilities.hpp"
 #include "pylon_ros2_camera_interfaces/srv/get_ptp_status.hpp"
 #include "pylon_ros2_camera_interfaces/srv/set_binning.hpp"
 #include "pylon_ros2_camera_interfaces/srv/set_brightness.hpp"
@@ -108,6 +109,7 @@ namespace pylon_ros2_camera
 using GetIntegerSrv                 = pylon_ros2_camera_interfaces::srv::GetIntegerValue;
 using GetFloatSrv                   = pylon_ros2_camera_interfaces::srv::GetFloatValue;
 using GetStringSrv                  = pylon_ros2_camera_interfaces::srv::GetStringValue;
+using GetCapabilitiesSrv            = pylon_ros2_camera_interfaces::srv::GetCapabilities;
 using GetPtpStatusSrv               = pylon_ros2_camera_interfaces::srv::GetPtpStatus;
 
 using SetBinningSrv                 = pylon_ros2_camera_interfaces::srv::SetBinning;
@@ -191,6 +193,17 @@ protected:
    * @return false if an error occurred
    */
   bool initAndRegister();
+
+  /**
+   * @brief Declare startup parameters that mirror service-exposed SDK controls.
+   */
+  void declareStartupServiceParameters();
+
+  /**
+   * @brief Apply service-backed startup parameters before image grabbing starts.
+   * @return false if a configured parameter could not be applied.
+   */
+  bool applyStartupServiceParameters();
 
   /**
    * @brief Start the camera and initialize the messages
@@ -347,6 +360,13 @@ protected:
   std::string setWhiteBalanceAuto(const int& mode);
 
   /**
+   * @brief Method to set the auto function ROI/AOI selector.
+   * @param mode : USB/dart 0 = ROI1, 1 = ROI2. GigE 0..7 = AOI1..AOI8.
+   * @return error message if an error occurred or done message otherwise.
+   */
+  std::string setAutoFunctionROISelector(const int& mode);
+
+  /**
    * @brief Method to set the sensor readout mode (Normal or Fast)
    * @param mode : 0 = normal , 1 = fast.
    * @return error message if an error occurred or done message otherwise.
@@ -373,6 +393,13 @@ protected:
    * @return error message if an error occurred or done message otherwise.
    */
   std::string setTriggerMode(const bool& value);
+
+  /**
+   * @brief Method to set the overlap mode.
+   * @param value : false = off, true = on
+   * @return error message if an error occurred or done message otherwise.
+   */
+  std::string setOverlapMode(const bool& value);
 
   /**
    * @brief Method to execute a software trigger   
@@ -421,6 +448,13 @@ protected:
    * @return error message if an error occurred or done message otherwise.
    */
   std::string setLineSource(const int& value);
+
+  /**
+   * @brief Method to set camera line format.
+   * @param value : 0 = NoConnect, 1 = TriState, 2 = TTL, 3 = LVDS, 4 = RS422, 5 = OptoCoupled, 6 = LVTTL, 7 = OpenDrain
+   * @return error message if an error occurred or done message otherwise.
+   */
+  std::string setLineFormat(const int& value);
 
   /**
    * @brief Method to set camera line inverter
@@ -665,6 +699,14 @@ protected:
                                     std::shared_ptr<GetFloatSrv::Response> response);
 
   /**
+   * @brief Service callback for reporting camera and driver capability families.
+   * @param req request
+   * @param res response
+   */
+  void getCapabilitiesCallback(const std::shared_ptr<GetCapabilitiesSrv::Request> request,
+                               std::shared_ptr<GetCapabilitiesSrv::Response> response);
+
+  /**
    * @brief Service callback for updating the cameras binning setting
    * @param req request
    * @param res response
@@ -801,6 +843,14 @@ protected:
                                    std::shared_ptr<SetIntegerSrv::Response> response);
 
   /**
+   * @brief Service callback for setting the auto function ROI/AOI selector.
+   * @param req request
+   * @param res response
+   */
+  void setAutoFunctionROISelectorCallback(const std::shared_ptr<SetIntegerSrv::Request> request,
+                                          std::shared_ptr<SetIntegerSrv::Response> response);
+
+  /**
    * @brief Service callback for setting the sensor readout mode (Normal or Fast)
    * @param req request
    * @param res response
@@ -862,6 +912,14 @@ protected:
    * @param res response
    */
   void setLineSourceCallback(const std::shared_ptr<SetIntegerSrv::Request> request,
+                             std::shared_ptr<SetIntegerSrv::Response> response);
+
+  /**
+   * @brief Service callback for setting the camera line format.
+   * @param req request
+   * @param res response
+   */
+  void setLineFormatCallback(const std::shared_ptr<SetIntegerSrv::Request> request,
                              std::shared_ptr<SetIntegerSrv::Response> response);
 
   /**
@@ -1242,6 +1300,14 @@ protected:
    */
   void setDeviceLinkThroughputLimitModeCallback(const std::shared_ptr<SetBoolSrv::Request> request,
                                                 std::shared_ptr<SetBoolSrv::Response> response);
+
+  /**
+   * @brief Service callback for setting the overlap mode.
+   * @param req request
+   * @param res response
+   */
+  void setOverlapModeCallback(const std::shared_ptr<SetBoolSrv::Request> request,
+                              std::shared_ptr<SetBoolSrv::Response> response);
 
   /**
    * @brief Service callback for enable/disable the camera gamma
@@ -1701,6 +1767,7 @@ protected:
   rclcpp::Service<GetIntegerSrv>::SharedPtr get_chunk_counter_value_srv_;
   
   rclcpp::Service<GetFloatSrv>::SharedPtr get_chunk_exposure_time_srv_;
+  rclcpp::Service<GetCapabilitiesSrv>::SharedPtr get_capabilities_srv_;
 
   rclcpp::Service<GetStringSrv>::SharedPtr get_pfs_srv_;
 
@@ -1724,6 +1791,7 @@ protected:
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_demosaicing_mode_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_light_source_preset_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_white_balance_auto_srv_;
+  rclcpp::Service<SetIntegerSrv>::SharedPtr set_auto_function_roi_selector_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_sensor_readout_mode_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_acquisition_frame_count_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_trigger_selector_srv_;
@@ -1732,6 +1800,7 @@ protected:
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_line_selector_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_line_mode_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_line_source_srv_;
+  rclcpp::Service<SetIntegerSrv>::SharedPtr set_line_format_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_user_set_selector_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_user_set_default_selector_srv_;
   rclcpp::Service<SetIntegerSrv>::SharedPtr set_device_link_throughput_limit_srv_;
@@ -1788,6 +1857,7 @@ protected:
   rclcpp::Service<SetBoolSrv>::SharedPtr set_trigger_mode_srv_;
   rclcpp::Service<SetBoolSrv>::SharedPtr set_line_inverter_srv_;
   rclcpp::Service<SetBoolSrv>::SharedPtr set_device_link_throughput_limit_mode_srv_;
+  rclcpp::Service<SetBoolSrv>::SharedPtr set_overlap_mode_srv_;
   rclcpp::Service<SetBoolSrv>::SharedPtr set_gamma_activation_srv_;
   rclcpp::Service<SetBoolSrv>::SharedPtr set_chunk_mode_active_srv_;
   rclcpp::Service<SetBoolSrv>::SharedPtr set_chunk_enable_srv_;

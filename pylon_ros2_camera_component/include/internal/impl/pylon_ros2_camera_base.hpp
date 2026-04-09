@@ -47,6 +47,29 @@ namespace pylon_ros2_camera
 namespace
 {
     static const rclcpp::Logger LOGGER_BASE = rclcpp::get_logger("basler.pylon.ros2.pylon_ros2_camera_base");
+
+    constexpr unsigned int PAYLOAD_DISCARD_ERROR_CODE = 3791651346u;
+
+    inline void logGrabResultFailure(const Pylon::CBaslerUniversalGrabResultPtr& grab_result)
+    {
+        const auto error_code = grab_result->GetErrorCode();
+        const std::string error_description(grab_result->GetErrorDescription().c_str());
+
+        if (error_code == PAYLOAD_DISCARD_ERROR_CODE)
+        {
+            static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
+            RCLCPP_ERROR_THROTTLE(LOGGER_BASE, steady_clock, 2000, "Error: %u %s", error_code, error_description.c_str());
+            return;
+        }
+
+        RCLCPP_ERROR_STREAM(LOGGER_BASE, "Error: " << error_code << " " << error_description);
+    }
+
+    inline void logGrabFailure()
+    {
+        static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
+        RCLCPP_ERROR_THROTTLE(LOGGER_BASE, steady_clock, 2000, "Error: Grab was not successful");
+    }
 }
 
 template <typename CameraTraitT>
@@ -424,7 +447,7 @@ bool PylonROS2CameraImpl<CameraTrait>::grab(std::vector<uint8_t>& image, rclcpp:
     Pylon::CBaslerUniversalGrabResultPtr ptr_grab_result;
     if (!this->grab(ptr_grab_result))
     {
-        RCLCPP_ERROR(LOGGER_BASE, "Error: Grab was not successful");
+        logGrabFailure();
         return false;
     }
     
@@ -499,7 +522,7 @@ bool PylonROS2CameraImpl<CameraTrait>::grab(uint8_t* image)
     Pylon::CBaslerUniversalGrabResultPtr ptr_grab_result;
     if (!this->grab(ptr_grab_result))
     {
-        RCLCPP_ERROR(LOGGER_BASE, "Error: Grab was not successful");
+        logGrabFailure();
         return false;
     }
 
@@ -604,7 +627,7 @@ bool PylonROS2CameraImpl<CameraTrait>::grab(Pylon::CBaslerUniversalGrabResultPtr
 
     if (!grab_result->GrabSucceeded())
     {
-        RCLCPP_ERROR_STREAM(LOGGER_BASE, "Error: " << grab_result->GetErrorCode() << " " << grab_result->GetErrorDescription());
+        logGrabResultFailure(grab_result);
         return false;
     }
 
@@ -2062,6 +2085,37 @@ std::string PylonROS2CameraImpl<CameraTraitT>::setTriggerMode(const bool& value)
 }
 
 template <typename CameraTraitT>
+std::string PylonROS2CameraImpl<CameraTraitT>::setOverlapMode(const bool& value)
+{
+    try
+    {
+        if (GenApi::IsAvailable(cam_->OverlapMode))
+        {
+            if (value)
+            {
+                cam_->OverlapMode.SetValue(OverlapModeEnums::OverlapMode_On);
+            }
+            else
+            {
+                cam_->OverlapMode.SetValue(OverlapModeEnums::OverlapMode_Off);
+            }
+        }
+        else
+        {
+            RCLCPP_ERROR_STREAM(LOGGER_BASE, "Error while trying to change the overlap mode. The connected Camera not supporting this feature");
+            return "The connected Camera not supporting this feature";
+        }
+    }
+    catch (const GenICam::GenericException &e)
+    {
+        RCLCPP_ERROR_STREAM(LOGGER_BASE, "An exception while setting the overlap mode occurred:" << e.GetDescription());
+        return e.GetDescription();
+    }
+
+    return "done";
+}
+
+template <typename CameraTraitT>
 int PylonROS2CameraImpl<CameraTraitT>::getTriggerMode()
 {
     try
@@ -2584,6 +2638,58 @@ std::string PylonROS2CameraImpl<CameraTraitT>::setLineSource(const int& value)
 }
 
 template <typename CameraTraitT>
+std::string PylonROS2CameraImpl<CameraTraitT>::setLineFormat(const int& value)
+{
+    try
+    {
+        if (GenApi::IsAvailable(cam_->LineFormat))
+        {
+            switch (value)
+            {
+            case 0:
+                cam_->LineFormat.SetValue(LineFormatEnums::LineFormat_NoConnect);
+                break;
+            case 1:
+                cam_->LineFormat.SetValue(LineFormatEnums::LineFormat_TriState);
+                break;
+            case 2:
+                cam_->LineFormat.SetValue(LineFormatEnums::LineFormat_TTL);
+                break;
+            case 3:
+                cam_->LineFormat.SetValue(LineFormatEnums::LineFormat_LVDS);
+                break;
+            case 4:
+                cam_->LineFormat.SetValue(LineFormatEnums::LineFormat_RS422);
+                break;
+            case 5:
+                cam_->LineFormat.SetValue(LineFormatEnums::LineFormat_OptoCoupled);
+                break;
+            case 6:
+                cam_->LineFormat.SetValue(LineFormatEnums::LineFormat_LVTTL);
+                break;
+            case 7:
+                cam_->LineFormat.SetValue(LineFormatEnums::LineFormat_OpenDrain);
+                break;
+            default:
+                return "Error: unknown value";
+            }
+        }
+        else
+        {
+            RCLCPP_ERROR_STREAM(LOGGER_BASE, "Error while trying to set the line format. The connected camera does not support this feature");
+            return "The connected camera does not support this feature";
+        }
+    }
+    catch (const GenICam::GenericException &e)
+    {
+        RCLCPP_ERROR_STREAM(LOGGER_BASE, "An exception while setting the line format occurred: " << e.GetDescription());
+        return e.GetDescription();
+    }
+
+    return "done";
+}
+
+template <typename CameraTraitT>
 std::string PylonROS2CameraImpl<CameraTraitT>::setLineDebouncerTime(const float& value)
 {
     try
@@ -2764,6 +2870,40 @@ std::string PylonROS2CameraImpl<CameraTraitT>::setBalanceWhiteAuto(const int& mo
     catch ( const GenICam::GenericException &e )
     {
         RCLCPP_ERROR_STREAM(LOGGER_BASE, "An exception while changing the balance white auto occurred:" << e.GetDescription());
+        return e.GetDescription();
+    }
+    return "done";
+}
+
+template <typename CameraTraitT>
+std::string PylonROS2CameraImpl<CameraTraitT>::setAutoFunctionROISelector(const int& mode)
+{
+    try
+    {
+        if (GenApi::IsAvailable(cam_->AutoFunctionROISelector))
+        {
+            if (mode == 0)
+            {
+                cam_->AutoFunctionROISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionROISelector_ROI1);
+            }
+            else if (mode == 1)
+            {
+                cam_->AutoFunctionROISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionROISelector_ROI2);
+            }
+            else
+            {
+                return "Error: unknown value";
+            }
+        }
+        else
+        {
+            RCLCPP_ERROR_STREAM(LOGGER_BASE, "Error while trying to change the auto function ROI selector. The connected camera does not support this feature");
+            return "The connected camera does not support this feature";
+        }
+    }
+    catch (const GenICam::GenericException &e)
+    {
+        RCLCPP_ERROR_STREAM(LOGGER_BASE, "An exception while changing the auto function ROI selector occurred: " << e.GetDescription());
         return e.GetDescription();
     }
     return "done";
@@ -3624,7 +3764,6 @@ int PylonROS2CameraImpl<CameraTraitT>::getChunkModeActive()
     }
     else
     {
-        RCLCPP_ERROR_STREAM(LOGGER_BASE, "Error while trying to getting the Chunk Mode Active. The connected Camera not supporting this feature");
         return -1;      // No Supported
     }
 }

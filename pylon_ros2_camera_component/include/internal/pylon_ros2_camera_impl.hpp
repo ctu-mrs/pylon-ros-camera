@@ -185,6 +185,8 @@ public:
 
     virtual int getBalanceWhiteAuto() override;
 
+    virtual std::string setAutoFunctionROISelector(const int& mode) override;
+
     virtual std::string setSensorReadoutMode(const int& mode) override;
 
     virtual int getSensorReadoutMode() override;
@@ -198,6 +200,8 @@ public:
     virtual int getTriggerSelector() override;
 
     virtual std::string setTriggerMode(const bool& value) override;
+
+    virtual std::string setOverlapMode(const bool& value) override;
 
     virtual int getTriggerMode() override;
 
@@ -220,6 +224,8 @@ public:
     virtual std::string setLineMode(const int& value) override;
 
     virtual std::string setLineSource(const int& value) override;
+
+    virtual std::string setLineFormat(const int& value) override;
 
     virtual std::string setLineInverter(const bool& value) override;
 
@@ -428,6 +434,7 @@ protected:
     typedef typename CameraTraitT::AcquisitionStatusSelectorEnums AcquisitionStatusSelectorEnums;
     typedef typename CameraTraitT::TriggerSelectorEnums TriggerSelectorEnums;
     typedef typename CameraTraitT::TriggerModeEnums TriggerModeEnums;
+    typedef typename CameraTraitT::OverlapModeEnums OverlapModeEnums;
     typedef typename CameraTraitT::TriggerSourceEnums TriggerSourceEnums;
     typedef typename CameraTraitT::TriggerActivationEnums TriggerActivationEnums;
     typedef typename CameraTraitT::LineSelectorEnums LineSelectorEnums;

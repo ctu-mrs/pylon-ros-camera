@@ -26,6 +26,7 @@ set(SRV_FILES
   "srv/GetIntegerValue.srv"
   "srv/GetFloatValue.srv"
   "srv/GetStringValue.srv"
+  "srv/GetCapabilities.srv"
   "srv/GetPtpStatus.srv"
   "srv/SetBinning.srv"
   "srv/SetBrightness.srv"

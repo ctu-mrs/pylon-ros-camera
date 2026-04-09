@@ -590,6 +590,13 @@ public:
      */
     virtual int getBalanceWhiteAuto() = 0;
 
+    /**
+     * set auto function ROI/AOI selector
+     * @param mode : USB/dart 0 = ROI1, 1 = ROI2. GigE 0..7 = AOI1..AOI8.
+     * @return error message if an error occurred or done message otherwise.
+     */
+    virtual std::string setAutoFunctionROISelector(const int& mode) = 0;
+
      /**
      * set the sensor readout mode
      * @param mode : 0 = normal , 1 = fast.
@@ -635,6 +642,13 @@ public:
      * @return error message if an error occurred or done message otherwise.
      */
     virtual std::string setTriggerMode(const bool& value) = 0 ;
+
+    /**
+     * @brief Method to set camera overlap mode.
+     * @param value false = off, true = on
+     * @return error message if an error occurred or done message otherwise.
+     */
+    virtual std::string setOverlapMode(const bool& value) = 0;
 
     /**
      * get current trigger mode   
@@ -707,6 +721,13 @@ public:
      * @return error message if an error occurred or done message otherwise.
      */
     virtual std::string setLineSource(const int& value) = 0;
+
+    /**
+     * set camera line format
+     * @param value : 0 = NoConnect, 1 = TriState, 2 = TTL, 3 = LVDS, 4 = RS422, 5 = OptoCoupled, 6 = LVTTL, 7 = OpenDrain
+     * @return error message if an error occurred or done message otherwise.
+     */
+    virtual std::string setLineFormat(const int& value) = 0;
 
     /**
      * set device link throughput limit mode 

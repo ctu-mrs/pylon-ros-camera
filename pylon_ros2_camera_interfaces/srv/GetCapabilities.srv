@@ -1,0 +1,9 @@
+---
+bool success
+string message
+string camera_type
+bool is_blaze
+string[] supported_feature_families
+string[] runtime_exposed_feature_families
+string[] startup_yaml_feature_families
+string[] sdk_detected_but_unexposed_feature_families

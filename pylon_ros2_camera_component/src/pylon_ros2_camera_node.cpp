@@ -28,6 +28,9 @@
 
 #include <GenApi/GenApi.h>
 
+#include <algorithm>
+#include <functional>
+
 #include <rclcpp/logger.hpp>
 
 //#include <functional>
@@ -41,6 +44,225 @@ namespace pylon_ros2_camera
 namespace
 {
     static const rclcpp::Logger LOGGER = rclcpp::get_logger("basler.pylon.ros2.pylon_ros2_camera_node");
+
+    bool hasFeature(const std::vector<std::string>& features, const std::string& feature)
+    {
+      return std::find(features.begin(), features.end(), feature) != features.end();
+    }
+
+    void appendFeature(std::vector<std::string>& features, const std::string& feature)
+    {
+      if (!hasFeature(features, feature))
+      {
+        features.push_back(feature);
+      }
+    }
+
+    void appendFeatures(std::vector<std::string>& features, const std::vector<std::string>& to_add)
+    {
+      for (const auto & feature : to_add)
+      {
+        appendFeature(features, feature);
+      }
+    }
+
+    std::vector<std::string> runtimeExposedFeatureFamilies(PylonROS2Camera& camera)
+    {
+      std::vector<std::string> features{
+        "exposure",
+        "gain",
+        "gamma",
+        "brightness",
+        "white_balance",
+        "white_balance_auto",
+        "roi",
+        "binning",
+        "image_encoding",
+        "offset",
+        "black_level",
+        "pgi",
+        "demosaicing",
+        "light_source_preset",
+        "sensor_readout_mode",
+        "acquisition_frame_count",
+        "trigger",
+        "overlap_mode",
+        "line_io",
+        "user_sets",
+        "transport_tuning",
+        "chunk_data",
+        "timers",
+        "user_output",
+        "device_reset",
+        "grabbing_control",
+        "pfs"
+      };
+
+      if (camera.isBlaze())
+      {
+        appendFeatures(features, {
+          "blaze_3d_filters",
+          "blaze_operating_mode",
+          "acquisition_frame_rate",
+          "hdr_mode",
+          "fast_mode"
+        });
+      }
+      else
+      {
+        appendFeature(features, "action_triggering");
+      }
+
+      if (!camera.isBlaze())
+      {
+        appendFeatures(features, {
+          "auto_function_roi",
+          "line_format"
+        });
+      }
+
+      if (camera.typeName() == "GigE" || camera.typeName() == "GIGE2")
+      {
+        appendFeatures(features, {
+          "ptp",
+          "sync_free_run_timer",
+          "periodic_signal"
+        });
+      }
+
+      return features;
+    }
+
+    std::vector<std::string> startupYamlFeatureFamilies(PylonROS2Camera& camera)
+    {
+      std::vector<std::string> features{
+        "exposure",
+        "gain",
+        "gamma",
+        "brightness",
+        "white_balance_auto",
+        "roi",
+        "binning",
+        "image_encoding",
+        "offset",
+        "black_level",
+        "pgi",
+        "demosaicing",
+        "light_source_preset",
+        "sensor_readout_mode",
+        "acquisition_frame_count",
+        "trigger",
+        "overlap_mode",
+        "line_io",
+        "user_sets",
+        "transport_tuning",
+        "chunk_data",
+        "timers"
+      };
+
+      if (camera.typeName() == "GigE" || camera.typeName() == "GIGE2")
+      {
+        appendFeatures(features, {
+          "ptp",
+          "sync_free_run_timer",
+          "periodic_signal"
+        });
+      }
+
+      if (!camera.isBlaze())
+      {
+        appendFeatures(features, {
+          "auto_function_roi",
+          "line_format"
+        });
+      }
+
+      if (camera.isBlaze())
+      {
+        appendFeatures(features, {
+          "blaze_3d_filters",
+          "blaze_operating_mode",
+          "acquisition_frame_rate",
+          "hdr_mode",
+          "fast_mode"
+        });
+      }
+
+      return features;
+    }
+
+    std::vector<std::string> sdkDetectedButUnexposedFeatureFamilies(PylonROS2Camera& camera)
+    {
+      std::vector<std::string> features;
+      const std::string type_name = camera.isBlaze() ? "BLAZE" : camera.typeName();
+
+      if (type_name == "USB" || type_name == "GigE" || type_name == "GIGE2")
+      {
+        appendFeatures(features, {
+          "sequencer",
+          "sensor_transfer_bit_depth"
+        });
+      }
+
+      if (type_name == "GigE" || type_name == "GIGE2")
+      {
+        appendFeatures(features, {
+          "bandwidth_reserve"
+        });
+      }
+
+      if (type_name == "GIGE2")
+      {
+        appendFeatures(features, {
+          "image_compression",
+          "conversion_gain",
+          "light_control"
+        });
+      }
+
+      if (type_name == "USB")
+      {
+        appendFeatures(features, {
+          "conversion_gain",
+          "image_compression"
+        });
+      }
+
+      if (type_name == "BLAZE")
+      {
+        appendFeature(features, "gendc_streaming_mode");
+      }
+
+      return features;
+    }
+
+    std::vector<std::string> supportedFeatureFamilies(PylonROS2Camera& camera)
+    {
+      auto features = runtimeExposedFeatureFamilies(camera);
+      appendFeatures(features, startupYamlFeatureFamilies(camera));
+      appendFeatures(features, sdkDetectedButUnexposedFeatureFamilies(camera));
+      return features;
+    }
+
+    bool startupParameterSucceeded(const std::string& result)
+    {
+      return result.find("done") != std::string::npos;
+    }
+
+    bool hasStartupOverride(PylonROS2CameraNode& node, const std::string& name)
+    {
+      const auto & overrides = node.get_node_parameters_interface()->get_parameter_overrides();
+      return overrides.find(name) != overrides.end();
+    }
+
+    template<typename T>
+    void declareStartupParameterIfNeeded(PylonROS2CameraNode& node, const char * name, const T & default_value)
+    {
+      if (!node.has_parameter(name))
+      {
+        node.declare_parameter<T>(name, default_value);
+      }
+    }
 }
 
 PylonROS2CameraNode::PylonROS2CameraNode(const rclcpp::NodeOptions& options)
@@ -124,6 +346,7 @@ bool PylonROS2CameraNode::init()
   // These parameters furthermore contain the intrinsic calibration matrices,
   // in case they are provided
   this->pylon_camera_parameter_set_.readFromRosParameterServer(*this);
+  this->declareStartupServiceParameters();
   
   // creating the target PylonCamera-Object with the specified
   // device_user_id, registering the Software-Trigger-Mode, starting the
@@ -239,6 +462,9 @@ void PylonROS2CameraNode::initServices()
   
   srv_name = srv_prefix + "get_chunk_exposure_time";
   this->get_chunk_exposure_time_srv_ = this->create_service<GetFloatSrv>(srv_name, std::bind(&PylonROS2CameraNode::getChunkExposureTimeCallback, this, _1, _2));
+
+  srv_name = srv_prefix + "get_capabilities";
+  this->get_capabilities_srv_ = this->create_service<GetCapabilitiesSrv>(srv_name, std::bind(&PylonROS2CameraNode::getCapabilitiesCallback, this, _1, _2));
   
   srv_name = srv_prefix + "set_binning";
   this->set_binning_srv_ = this->create_service<SetBinningSrv>(srv_name, std::bind(&PylonROS2CameraNode::setBinningCallback, this, _1, _2));
@@ -290,6 +516,9 @@ void PylonROS2CameraNode::initServices()
   
   srv_name = srv_prefix + "set_white_balance_auto";
   this->set_white_balance_auto_srv_ = this->create_service<SetIntegerSrv>(srv_name, std::bind(&PylonROS2CameraNode::setWhiteBalanceAutoCallback, this, _1, _2));
+
+  srv_name = srv_prefix + "set_auto_function_roi_selector";
+  this->set_auto_function_roi_selector_srv_ = this->create_service<SetIntegerSrv>(srv_name, std::bind(&PylonROS2CameraNode::setAutoFunctionROISelectorCallback, this, _1, _2));
   
   srv_name = srv_prefix + "set_sensor_readout_mode";
   this->set_sensor_readout_mode_srv_ = this->create_service<SetIntegerSrv>(srv_name, std::bind(&PylonROS2CameraNode::setSensorReadoutModeCallback, this, _1, _2));
@@ -314,6 +543,9 @@ void PylonROS2CameraNode::initServices()
   
   srv_name = srv_prefix + "set_line_source";
   this->set_line_source_srv_ = this->create_service<SetIntegerSrv>(srv_name, std::bind(&PylonROS2CameraNode::setLineSourceCallback, this, _1, _2));
+
+  srv_name = srv_prefix + "set_line_format";
+  this->set_line_format_srv_ = this->create_service<SetIntegerSrv>(srv_name, std::bind(&PylonROS2CameraNode::setLineFormatCallback, this, _1, _2));
   
   srv_name = srv_prefix + "set_user_set_selector";
   this->set_user_set_selector_srv_ = this->create_service<SetIntegerSrv>(srv_name, std::bind(&PylonROS2CameraNode::setUserSetSelectorCallback, this, _1, _2));
@@ -455,6 +687,9 @@ void PylonROS2CameraNode::initServices()
   
   srv_name = srv_prefix + "set_trigger_mode";
   this->set_trigger_mode_srv_ = this->create_service<SetBoolSrv>(srv_name, std::bind(&PylonROS2CameraNode::setTriggerModeCallback, this, _1, _2));
+
+  srv_name = srv_prefix + "set_overlap_mode";
+  this->set_overlap_mode_srv_ = this->create_service<SetBoolSrv>(srv_name, std::bind(&PylonROS2CameraNode::setOverlapModeCallback, this, _1, _2));
   
   srv_name = srv_prefix + "set_line_inverter";
   this->set_line_inverter_srv_ = this->create_service<SetBoolSrv>(srv_name, std::bind(&PylonROS2CameraNode::setLineInverterCallback, this, _1, _2));
@@ -567,6 +802,260 @@ void PylonROS2CameraNode::initDiagnostics()
   auto diagnostics_trigger = this->create_wall_timer(2000ms, std::bind(&PylonROS2CameraNode::diagnosticsTimerCallback, this));
 }
 
+void PylonROS2CameraNode::declareStartupServiceParameters()
+{
+  declareStartupParameterIfNeeded(*this, "user_set_selector", 0);
+  declareStartupParameterIfNeeded(*this, "user_set_default_selector", 0);
+  declareStartupParameterIfNeeded(*this, "offset_x", 0);
+  declareStartupParameterIfNeeded(*this, "offset_y", 0);
+  declareStartupParameterIfNeeded(*this, "black_level", 0);
+  declareStartupParameterIfNeeded(*this, "reverse_x", false);
+  declareStartupParameterIfNeeded(*this, "reverse_y", false);
+  declareStartupParameterIfNeeded(*this, "pgi_mode", false);
+  declareStartupParameterIfNeeded(*this, "demosaicing_mode", 0);
+  declareStartupParameterIfNeeded(*this, "noise_reduction", 0.0f);
+  declareStartupParameterIfNeeded(*this, "sharpness_enhancement", 0.0f);
+  declareStartupParameterIfNeeded(*this, "light_source_preset", 0);
+  declareStartupParameterIfNeeded(*this, "white_balance_auto", 0);
+  declareStartupParameterIfNeeded(*this, "auto_function_roi_selector", 0);
+  declareStartupParameterIfNeeded(*this, "sensor_readout_mode", 0);
+  declareStartupParameterIfNeeded(*this, "acquisition_frame_count", 0);
+  declareStartupParameterIfNeeded(*this, "trigger_selector", 0);
+  declareStartupParameterIfNeeded(*this, "trigger_mode", false);
+  declareStartupParameterIfNeeded(*this, "overlap_mode", false);
+  declareStartupParameterIfNeeded(*this, "trigger_source", 0);
+  declareStartupParameterIfNeeded(*this, "trigger_activation", 0);
+  declareStartupParameterIfNeeded(*this, "trigger_delay", 0.0f);
+  declareStartupParameterIfNeeded(*this, "line_selector", 0);
+  declareStartupParameterIfNeeded(*this, "line_mode", 0);
+  declareStartupParameterIfNeeded(*this, "line_source", 0);
+  declareStartupParameterIfNeeded(*this, "line_format", 0);
+  declareStartupParameterIfNeeded(*this, "line_inverter", false);
+  declareStartupParameterIfNeeded(*this, "line_debouncer_time", 0.0f);
+  declareStartupParameterIfNeeded(*this, "device_link_throughput_limit_mode", false);
+  declareStartupParameterIfNeeded(*this, "device_link_throughput_limit", 0);
+  declareStartupParameterIfNeeded(*this, "max_transfer_size", 0);
+  declareStartupParameterIfNeeded(*this, "gamma_selector", 0);
+  declareStartupParameterIfNeeded(*this, "gamma_activation", false);
+  declareStartupParameterIfNeeded(*this, "output_queue_size", 0);
+  declareStartupParameterIfNeeded(*this, "max_num_buffer", 0);
+  declareStartupParameterIfNeeded(*this, "chunk_mode_active", false);
+  declareStartupParameterIfNeeded(*this, "chunk_selector", 0);
+  declareStartupParameterIfNeeded(*this, "chunk_enable", false);
+  declareStartupParameterIfNeeded(*this, "chunk_exposure_time", 0.0f);
+  declareStartupParameterIfNeeded(*this, "timer_selector", 0);
+  declareStartupParameterIfNeeded(*this, "timer_trigger_source", 0);
+  declareStartupParameterIfNeeded(*this, "timer_duration", 0.0f);
+  declareStartupParameterIfNeeded(*this, "enable_ptp_management_protocol", false);
+  declareStartupParameterIfNeeded(*this, "enable_two_step_operation", false);
+  declareStartupParameterIfNeeded(*this, "enable_ptp", false);
+  declareStartupParameterIfNeeded(*this, "ptp_priority", 0);
+  declareStartupParameterIfNeeded(*this, "ptp_profile", 0);
+  declareStartupParameterIfNeeded(*this, "ptp_network_mode", 0);
+  declareStartupParameterIfNeeded(*this, "ptp_uc_port_address_index", 0);
+  declareStartupParameterIfNeeded(*this, "ptp_uc_port_address", 0);
+  declareStartupParameterIfNeeded(*this, "enable_sync_free_run_timer", false);
+  declareStartupParameterIfNeeded(*this, "sync_free_run_timer_start_time_low", 0);
+  declareStartupParameterIfNeeded(*this, "sync_free_run_timer_start_time_high", 0);
+  declareStartupParameterIfNeeded(*this, "sync_free_run_timer_trigger_rate_abs", 0.0f);
+  declareStartupParameterIfNeeded(*this, "periodic_signal_period", 0.0f);
+  declareStartupParameterIfNeeded(*this, "periodic_signal_delay", 0.0f);
+  declareStartupParameterIfNeeded(*this, "depth_min", 0);
+  declareStartupParameterIfNeeded(*this, "depth_max", 0);
+  declareStartupParameterIfNeeded(*this, "temporal_filter_strength", 0);
+  declareStartupParameterIfNeeded(*this, "outlier_removal_threshold", 0);
+  declareStartupParameterIfNeeded(*this, "outlier_removal_tolerance", 0);
+  declareStartupParameterIfNeeded(*this, "ambiguity_filter_threshold", 0);
+  declareStartupParameterIfNeeded(*this, "confidence_threshold", 0);
+  declareStartupParameterIfNeeded(*this, "intensity_calculation", 0);
+  declareStartupParameterIfNeeded(*this, "exposure_time_selector", 0);
+  declareStartupParameterIfNeeded(*this, "operating_mode", 0);
+  declareStartupParameterIfNeeded(*this, "multi_camera_channel", 0);
+  declareStartupParameterIfNeeded(*this, "enable_spatial_filter", false);
+  declareStartupParameterIfNeeded(*this, "enable_temporal_filter", false);
+  declareStartupParameterIfNeeded(*this, "enable_outlier_removal", false);
+  declareStartupParameterIfNeeded(*this, "enable_ambiguity_filter", false);
+  declareStartupParameterIfNeeded(*this, "enable_thermal_drift_correction", false);
+  declareStartupParameterIfNeeded(*this, "enable_distortion_correction", false);
+  declareStartupParameterIfNeeded(*this, "enable_acquisition_frame_rate", false);
+  declareStartupParameterIfNeeded(*this, "acquisition_frame_rate", 0.0f);
+  declareStartupParameterIfNeeded(*this, "scan_3d_calibration_offset", 0.0f);
+  declareStartupParameterIfNeeded(*this, "enable_hdr_mode", false);
+  declareStartupParameterIfNeeded(*this, "enable_fast_mode", false);
+  declareStartupParameterIfNeeded(*this, "roi_x_offset", 0);
+  declareStartupParameterIfNeeded(*this, "roi_y_offset", 0);
+  declareStartupParameterIfNeeded(*this, "roi_width", 0);
+  declareStartupParameterIfNeeded(*this, "roi_height", 0);
+}
+
+bool PylonROS2CameraNode::applyStartupServiceParameters()
+{
+  // Startup parameters are applied after the camera is opened but before the
+  // first successful grab marks the interface ready. Use direct camera access
+  // here so pre-grab-only settings remain configurable from YAML.
+  const auto apply_int = [this](const char * name, const std::function<std::string(int)>& apply_fn)
+  {
+    if (!hasStartupOverride(*this, name))
+    {
+      return true;
+    }
+
+    int value{};
+    this->get_parameter(name, value);
+    const std::string result = apply_fn(value);
+    if (!startupParameterSucceeded(result))
+    {
+      RCLCPP_ERROR_STREAM(LOGGER, "Failed to apply startup parameter '" << name << "': " << result);
+      return false;
+    }
+    return true;
+  };
+  const auto apply_bool = [this](const char * name, const std::function<std::string(bool)>& apply_fn)
+  {
+    if (!hasStartupOverride(*this, name))
+    {
+      return true;
+    }
+
+    bool value{};
+    this->get_parameter(name, value);
+    const std::string result = apply_fn(value);
+    if (!startupParameterSucceeded(result))
+    {
+      RCLCPP_ERROR_STREAM(LOGGER, "Failed to apply startup parameter '" << name << "': " << result);
+      return false;
+    }
+    return true;
+  };
+  const auto apply_float = [this](const char * name, const std::function<std::string(float)>& apply_fn)
+  {
+    if (!hasStartupOverride(*this, name))
+    {
+      return true;
+    }
+
+    float value{};
+    this->get_parameter(name, value);
+    const std::string result = apply_fn(value);
+    if (!startupParameterSucceeded(result))
+    {
+      RCLCPP_ERROR_STREAM(LOGGER, "Failed to apply startup parameter '" << name << "': " << result);
+      return false;
+    }
+    return true;
+  };
+
+  if (!apply_int("user_set_selector", [this](int value) { return this->pylon_camera_->setUserSetSelector(value); })) return false;
+  if (!apply_int("user_set_default_selector", [this](int value) { return this->pylon_camera_->setUserSetDefaultSelector(value); })) return false;
+  if (!apply_int("offset_x", [this](int value) { return this->pylon_camera_->setOffsetXY(value, true); })) return false;
+  if (!apply_int("offset_y", [this](int value) { return this->pylon_camera_->setOffsetXY(value, false); })) return false;
+  if (!apply_int("black_level", [this](int value) { return this->pylon_camera_->setBlackLevel(value); })) return false;
+  if (!apply_bool("reverse_x", [this](bool value) { return this->pylon_camera_->reverseXY(value, true); })) return false;
+  if (!apply_bool("reverse_y", [this](bool value) { return this->pylon_camera_->reverseXY(value, false); })) return false;
+  if (!apply_bool("pgi_mode", [this](bool value) { return this->pylon_camera_->setPGIMode(value); })) return false;
+  if (!apply_int("demosaicing_mode", [this](int value) { return this->pylon_camera_->setDemosaicingMode(value); })) return false;
+  if (!apply_float("noise_reduction", [this](float value) { return this->pylon_camera_->setNoiseReduction(value); })) return false;
+  if (!apply_float("sharpness_enhancement", [this](float value) { return this->pylon_camera_->setSharpnessEnhancement(value); })) return false;
+  if (!apply_int("light_source_preset", [this](int value) { return this->pylon_camera_->setLightSourcePreset(value); })) return false;
+  if (!apply_int("white_balance_auto", [this](int value) { return this->pylon_camera_->setBalanceWhiteAuto(value); })) return false;
+  if (!apply_int("auto_function_roi_selector", [this](int value) { return this->pylon_camera_->setAutoFunctionROISelector(value); })) return false;
+  if (!apply_int("sensor_readout_mode", [this](int value) { return this->pylon_camera_->setSensorReadoutMode(value); })) return false;
+  if (!apply_int("acquisition_frame_count", [this](int value) { return this->pylon_camera_->setAcquisitionFrameCount(value); })) return false;
+  if (!apply_int("trigger_selector", [this](int value) { return this->pylon_camera_->setTriggerSelector(value); })) return false;
+  if (!apply_bool("trigger_mode", [this](bool value) { return this->pylon_camera_->setTriggerMode(value); })) return false;
+  if (!apply_bool("overlap_mode", [this](bool value) { return this->pylon_camera_->setOverlapMode(value); })) return false;
+  if (!apply_int("trigger_source", [this](int value) { return this->pylon_camera_->setTriggerSource(value); })) return false;
+  if (!apply_int("trigger_activation", [this](int value) { return this->pylon_camera_->setTriggerActivation(value); })) return false;
+  if (!apply_float("trigger_delay", [this](float value) { return this->pylon_camera_->setTriggerDelay(value); })) return false;
+  if (!apply_int("line_selector", [this](int value) { return this->pylon_camera_->setLineSelector(value); })) return false;
+  if (!apply_int("line_mode", [this](int value) { return this->pylon_camera_->setLineMode(value); })) return false;
+  if (!apply_int("line_source", [this](int value) { return this->pylon_camera_->setLineSource(value); })) return false;
+  if (!apply_int("line_format", [this](int value) { return this->pylon_camera_->setLineFormat(value); })) return false;
+  if (!apply_bool("line_inverter", [this](bool value) { return this->pylon_camera_->setLineInverter(value); })) return false;
+  if (!apply_float("line_debouncer_time", [this](float value) { return this->pylon_camera_->setLineDebouncerTime(value); })) return false;
+  if (!apply_bool("device_link_throughput_limit_mode", [this](bool value) { return this->pylon_camera_->setDeviceLinkThroughputLimitMode(value); })) return false;
+  if (!apply_int("device_link_throughput_limit", [this](int value) { return this->pylon_camera_->setDeviceLinkThroughputLimit(value); })) return false;
+  if (!apply_int("max_transfer_size", [this](int value) { return this->pylon_camera_->setMaxTransferSize(value); })) return false;
+  if (!apply_int("gamma_selector", [this](int value) { return this->pylon_camera_->setGammaSelector(value); })) return false;
+  if (!apply_bool("gamma_activation", [this](bool value) { return this->pylon_camera_->gammaEnable(value); })) return false;
+  if (!apply_int("output_queue_size", [this](int value) { return this->pylon_camera_->setOutputQueueSize(value); })) return false;
+  if (!apply_int("max_num_buffer", [this](int value) { return this->pylon_camera_->setMaxNumBuffer(value); })) return false;
+  if (!apply_bool("chunk_mode_active", [this](bool value) { return this->pylon_camera_->setChunkModeActive(value); })) return false;
+  if (!apply_int("chunk_selector", [this](int value) { return this->pylon_camera_->setChunkSelector(value); })) return false;
+  if (!apply_bool("chunk_enable", [this](bool value) { return this->pylon_camera_->setChunkEnable(value); })) return false;
+  if (!apply_float("chunk_exposure_time", [this](float value) { return this->pylon_camera_->setChunkExposureTime(value); })) return false;
+  if (!apply_int("timer_selector", [this](int value) { return this->pylon_camera_->setTimerSelector(value); })) return false;
+  if (!apply_int("timer_trigger_source", [this](int value) { return this->pylon_camera_->setTimerTriggerSource(value); })) return false;
+  if (!apply_float("timer_duration", [this](float value) { return this->pylon_camera_->setTimerDuration(value); })) return false;
+  if (!apply_bool("enable_ptp_management_protocol", [this](bool value) { return this->pylon_camera_->enablePTPManagementProtocol(value); })) return false;
+  if (!apply_bool("enable_two_step_operation", [this](bool value) { return this->pylon_camera_->enablePTPTwoStepOperation(value); })) return false;
+  if (!apply_bool("enable_ptp", [this](bool value) { return this->pylon_camera_->enablePTP(value); })) return false;
+  if (!apply_int("ptp_priority", [this](int value) { return this->pylon_camera_->setPTPPriority(value); })) return false;
+  if (!apply_int("ptp_profile", [this](int value) { return this->pylon_camera_->setPTPProfile(value); })) return false;
+  if (!apply_int("ptp_network_mode", [this](int value) { return this->pylon_camera_->setPTPNetworkMode(value); })) return false;
+  if (!apply_int("ptp_uc_port_address_index", [this](int value) { return this->pylon_camera_->setPTPUCPortAddressIndex(value); })) return false;
+  if (!apply_int("ptp_uc_port_address", [this](int value) { return this->pylon_camera_->setPTPUCPortAddress(value); })) return false;
+  if (!apply_bool("enable_sync_free_run_timer", [this](bool value) { return this->pylon_camera_->enableSyncFreeRunTimer(value); })) return false;
+  if (!apply_int("sync_free_run_timer_start_time_low", [this](int value) { return this->pylon_camera_->setSyncFreeRunTimerStartTimeLow(value); })) return false;
+  if (!apply_int("sync_free_run_timer_start_time_high", [this](int value) { return this->pylon_camera_->setSyncFreeRunTimerStartTimeHigh(value); })) return false;
+  if (!apply_float("sync_free_run_timer_trigger_rate_abs", [this](float value) { return this->pylon_camera_->setSyncFreeRunTimerTriggerRateAbs(value); })) return false;
+  if (!apply_float("periodic_signal_period", [this](float value) { return this->pylon_camera_->setPeriodicSignalPeriod(value); })) return false;
+  if (!apply_float("periodic_signal_delay", [this](float value) { return this->pylon_camera_->setPeriodicSignalDelay(value); })) return false;
+  if (!apply_int("depth_min", [this](int value) { return this->pylon_camera_->setDepthMin(value); })) return false;
+  if (!apply_int("depth_max", [this](int value) { return this->pylon_camera_->setDepthMax(value); })) return false;
+  if (!apply_int("temporal_filter_strength", [this](int value) { return this->pylon_camera_->setTemporalFilterStrength(value); })) return false;
+  if (!apply_int("outlier_removal_threshold", [this](int value) { return this->pylon_camera_->setOutlierRemovalThreshold(value); })) return false;
+  if (!apply_int("outlier_removal_tolerance", [this](int value) { return this->pylon_camera_->setOutlierRemovalTolerance(value); })) return false;
+  if (!apply_int("ambiguity_filter_threshold", [this](int value) { return this->pylon_camera_->setAmbiguityFilterThreshold(value); })) return false;
+  if (!apply_int("confidence_threshold", [this](int value) { return this->pylon_camera_->setConfidenceThreshold(value); })) return false;
+  if (!apply_int("intensity_calculation", [this](int value) { return this->pylon_camera_->setIntensityCalculation(value); })) return false;
+  if (!apply_int("exposure_time_selector", [this](int value) { return this->pylon_camera_->setExposureTimeSelector(value); })) return false;
+  if (!apply_int("operating_mode", [this](int value) { return this->pylon_camera_->setOperatingMode(value); })) return false;
+  if (!apply_int("multi_camera_channel", [this](int value) { return this->pylon_camera_->setMultiCameraChannel(value); })) return false;
+  if (!apply_bool("enable_spatial_filter", [this](bool value) { return this->pylon_camera_->enableSpatialFilter(value); })) return false;
+  if (!apply_bool("enable_temporal_filter", [this](bool value) { return this->pylon_camera_->enableTemporalFilter(value); })) return false;
+  if (!apply_bool("enable_outlier_removal", [this](bool value) { return this->pylon_camera_->enableOutlierRemoval(value); })) return false;
+  if (!apply_bool("enable_ambiguity_filter", [this](bool value) { return this->pylon_camera_->enableAmbiguityFilter(value); })) return false;
+  if (!apply_bool("enable_thermal_drift_correction", [this](bool value) { return this->pylon_camera_->enableThermalDriftCorrection(value); })) return false;
+  if (!apply_bool("enable_distortion_correction", [this](bool value) { return this->pylon_camera_->enableDistortionCorrection(value); })) return false;
+  if (!apply_bool("enable_acquisition_frame_rate", [this](bool value) { return this->pylon_camera_->enableAcquisitionFrameRate(value); })) return false;
+  if (!apply_float("acquisition_frame_rate", [this](float value) { return this->pylon_camera_->setAcquisitionFrameRate(value); })) return false;
+  if (!apply_float("scan_3d_calibration_offset", [this](float value) { return this->pylon_camera_->setScan3dCalibrationOffset(value); })) return false;
+  if (!apply_bool("enable_hdr_mode", [this](bool value) { return this->pylon_camera_->enableHDRMode(value); })) return false;
+  if (!apply_bool("enable_fast_mode", [this](bool value) { return this->pylon_camera_->enableFastMode(value); })) return false;
+
+  const bool any_roi_override =
+    hasStartupOverride(*this, "roi_x_offset") ||
+    hasStartupOverride(*this, "roi_y_offset") ||
+    hasStartupOverride(*this, "roi_width") ||
+    hasStartupOverride(*this, "roi_height");
+  if (any_roi_override)
+  {
+    auto target_roi = this->pylon_camera_->currentROI();
+    int roi_x_offset = static_cast<int>(target_roi.x_offset);
+    int roi_y_offset = static_cast<int>(target_roi.y_offset);
+    int roi_width = static_cast<int>(target_roi.width);
+    int roi_height = static_cast<int>(target_roi.height);
+    this->get_parameter("roi_x_offset", roi_x_offset);
+    this->get_parameter("roi_y_offset", roi_y_offset);
+    this->get_parameter("roi_width", roi_width);
+    this->get_parameter("roi_height", roi_height);
+    target_roi.x_offset = roi_x_offset;
+    target_roi.y_offset = roi_y_offset;
+    target_roi.width = roi_width;
+    target_roi.height = roi_height;
+
+    sensor_msgs::msg::RegionOfInterest reached_roi;
+    if (!this->setROI(target_roi, reached_roi))
+    {
+      RCLCPP_ERROR(LOGGER, "Failed to apply startup ROI parameters");
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool PylonROS2CameraNode::initAndRegister()
 {
   this->pylon_camera_ = PylonROS2Camera::create(this->pylon_camera_parameter_set_.deviceUserID());
@@ -663,6 +1152,18 @@ bool PylonROS2CameraNode::initAndRegister()
     RCLCPP_ERROR(LOGGER, "Error while applying the user-specified startup settings (e.g., mtu size for GigE, ...) to the camera!");
     this->cm_status_.status_id = pylon_ros2_camera_interfaces::msg::ComponentStatus::ERROR;
     this->cm_status_.status_msg = "Error while applying the user-specified startup settings";
+    if (this->pylon_camera_parameter_set_.enable_status_publisher_)
+    {
+      this->component_status_pub_->publish(this->cm_status_);
+    }
+    return false;
+  }
+
+  if (!this->applyStartupServiceParameters())
+  {
+    RCLCPP_ERROR(LOGGER, "Error while applying the user-specified startup SDK service parameters to the camera!");
+    this->cm_status_.status_id = pylon_ros2_camera_interfaces::msg::ComponentStatus::ERROR;
+    this->cm_status_.status_msg = "Error while applying startup SDK service parameters";
     if (this->pylon_camera_parameter_set_.enable_status_publisher_)
     {
       this->component_status_pub_->publish(this->cm_status_);
@@ -1819,6 +2320,24 @@ std::string PylonROS2CameraNode::setWhiteBalanceAuto(const int& mode)
   return this->pylon_camera_->setBalanceWhiteAuto(mode);
 }
 
+std::string PylonROS2CameraNode::setAutoFunctionROISelector(const int& mode)
+{
+  if (this->pylon_camera_->isBlaze())
+  {
+    RCLCPP_WARN(LOGGER, "Trying to set auto function ROI selector: there's no auto function ROI selector with the blaze camera");
+    return "No auto function ROI selector with the blaze";
+  }
+
+  std::lock_guard<std::recursive_mutex> lock(this->grab_mutex_);
+  if (!this->pylon_camera_->isReady())
+  {
+    RCLCPP_WARN(LOGGER, "Error in setAutoFunctionROISelector(): pylon_camera_ is not ready!");
+    return "pylon camera is not ready!";
+  }
+
+  return this->pylon_camera_->setAutoFunctionROISelector(mode);
+}
+
 std::string PylonROS2CameraNode::setSensorReadoutMode(const int& mode)
 {
   if (this->pylon_camera_->isBlaze())
@@ -1881,6 +2400,18 @@ std::string PylonROS2CameraNode::setTriggerMode(const bool& value)
   }
 
   return this->pylon_camera_->setTriggerMode(value);
+}
+
+std::string PylonROS2CameraNode::setOverlapMode(const bool& value)
+{
+  std::lock_guard<std::recursive_mutex> lock(this->grab_mutex_);
+  if (!this->pylon_camera_->isReady())
+  {
+    RCLCPP_WARN(LOGGER, "Error in setOverlapMode(): pylon_camera_ is not ready!");
+    return "pylon camera is not ready!";
+  }
+
+  return this->pylon_camera_->setOverlapMode(value);
 }
 
 std::string PylonROS2CameraNode::executeSoftwareTrigger()
@@ -1983,6 +2514,24 @@ std::string PylonROS2CameraNode::setLineSource(const int& value)
   }
 
   return this->pylon_camera_->setLineSource(value);
+}
+
+std::string PylonROS2CameraNode::setLineFormat(const int& value)
+{
+  if (this->pylon_camera_->isBlaze())
+  {
+    RCLCPP_WARN(LOGGER, "Trying to set line format: there's no line format parameter with the blaze camera");
+    return "No line format parameter with the blaze";
+  }
+
+  std::lock_guard<std::recursive_mutex> lock(this->grab_mutex_);
+  if (!this->pylon_camera_->isReady())
+  {
+    RCLCPP_WARN(LOGGER, "Error in setLineFormat(): pylon_camera_ is not ready!");
+    return "pylon camera is not ready!";
+  }
+
+  return this->pylon_camera_->setLineFormat(value);
 }
 
 std::string PylonROS2CameraNode::setLineInverter(const bool& value)
@@ -2686,6 +3235,30 @@ void PylonROS2CameraNode::getChunkExposureTimeCallback(const std::shared_ptr<Get
   }
 }
 
+void PylonROS2CameraNode::getCapabilitiesCallback(const std::shared_ptr<GetCapabilitiesSrv::Request> request,
+                                                  std::shared_ptr<GetCapabilitiesSrv::Response> response)
+{
+  (void)request;
+
+  if (this->pylon_camera_ == nullptr)
+  {
+    response->success = false;
+    response->message = "pylon camera is not initialized";
+    response->camera_type = "unknown";
+    response->is_blaze = false;
+    return;
+  }
+
+  response->success = true;
+  response->message = "done";
+  response->is_blaze = this->pylon_camera_->isBlaze();
+  response->camera_type = response->is_blaze ? "BLAZE" : this->pylon_camera_->typeName();
+  response->runtime_exposed_feature_families = runtimeExposedFeatureFamilies(*this->pylon_camera_);
+  response->startup_yaml_feature_families = startupYamlFeatureFamilies(*this->pylon_camera_);
+  response->sdk_detected_but_unexposed_feature_families = sdkDetectedButUnexposedFeatureFamilies(*this->pylon_camera_);
+  response->supported_feature_families = supportedFeatureFamilies(*this->pylon_camera_);
+}
+
 void PylonROS2CameraNode::setBinningCallback(const std::shared_ptr<SetBinningSrv::Request> request,
                                              std::shared_ptr<SetBinningSrv::Response> response)
 {
@@ -2958,6 +3531,28 @@ void PylonROS2CameraNode::setWhiteBalanceAutoCallback(const std::shared_ptr<SetI
   }
 }
 
+void PylonROS2CameraNode::setAutoFunctionROISelectorCallback(const std::shared_ptr<SetIntegerSrv::Request> request,
+                                                             std::shared_ptr<SetIntegerSrv::Response> response)
+{
+  response->message = this->setAutoFunctionROISelector(request->value);
+  if (response->message.find("done") != std::string::npos)
+  {
+    response->success = true;
+  }
+  else
+  {
+    response->success = false;
+    if (response->message == "Node is not writable.")
+    {
+      response->message = "Using this feature requires stopping image grabbing";
+    }
+    else if ((response->message.find("EnumEntry") != std::string::npos) != 0)
+    {
+      response->message = "The passed auto function ROI selector number is not supported by the connected camera";
+    }
+  }
+}
+
 void PylonROS2CameraNode::setSensorReadoutModeCallback(const std::shared_ptr<SetIntegerSrv::Request> request,
                                                        std::shared_ptr<SetIntegerSrv::Response> response)
 {
@@ -3110,6 +3705,28 @@ void PylonROS2CameraNode::setLineSourceCallback(const std::shared_ptr<SetInteger
     if (response->message == "Node is not writable.")
     {
       response->message = "Using this feature requires stopping image grabbing";
+    }
+  }
+}
+
+void PylonROS2CameraNode::setLineFormatCallback(const std::shared_ptr<SetIntegerSrv::Request> request,
+                                                std::shared_ptr<SetIntegerSrv::Response> response)
+{
+  response->message = this->setLineFormat(request->value);
+  if (response->message.find("done") != std::string::npos)
+  {
+    response->success = true;
+  }
+  else
+  {
+    response->success = false;
+    if (response->message == "Node is not writable.")
+    {
+      response->message = "Using this feature requires stopping image grabbing";
+    }
+    else if ((response->message.find("EnumEntry") != std::string::npos) != 0)
+    {
+      response->message = "The passed line format number is not supported by the connected camera";
     }
   }
 }
@@ -3880,6 +4497,24 @@ void PylonROS2CameraNode::setDeviceLinkThroughputLimitModeCallback(const std::sh
     response->success = true;
   }
   else 
+  {
+    response->success = false;
+    if (response->message == "Node is not writable.")
+    {
+      response->message = "Using this feature requires stopping image grabbing";
+    }
+  }
+}
+
+void PylonROS2CameraNode::setOverlapModeCallback(const std::shared_ptr<SetBoolSrv::Request> request,
+                                                 std::shared_ptr<SetBoolSrv::Response> response)
+{
+  response->message = this->setOverlapMode(request->data);
+  if (response->message.find("done") != std::string::npos)
+  {
+    response->success = true;
+  }
+  else
   {
     response->success = false;
     if (response->message == "Node is not writable.")

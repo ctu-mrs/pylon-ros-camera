@@ -69,6 +69,7 @@ struct GigECameraTrait
     typedef Basler_UniversalCameraParams::SensorReadoutModeEnums SensorReadoutModeEnums;
     typedef Basler_UniversalCameraParams::TriggerSelectorEnums TriggerSelectorEnums;
     typedef Basler_UniversalCameraParams::TriggerModeEnums TriggerModeEnums;
+    typedef Basler_UniversalCameraParams::OverlapModeEnums OverlapModeEnums;
     typedef Basler_UniversalCameraParams::TriggerSourceEnums TriggerSourceEnums;
     typedef Basler_UniversalCameraParams::TriggerActivationEnums TriggerActivationEnums;
     typedef Basler_UniversalCameraParams::LineSourceEnums DeviceLinkThroughputLimitModeEnums;
@@ -1146,6 +1147,57 @@ int PylonROS2GigECamera::getBalanceWhiteAuto()
     {
         return -2; // Error
     }
+}
+
+template <>
+std::string PylonROS2GigECamera::setAutoFunctionROISelector(const int& mode)
+{
+    try
+    {
+        if (GenApi::IsAvailable(cam_->AutoFunctionAOISelector))
+        {
+            switch (mode)
+            {
+            case 0:
+                cam_->AutoFunctionAOISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionAOISelector_AOI1);
+                break;
+            case 1:
+                cam_->AutoFunctionAOISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionAOISelector_AOI2);
+                break;
+            case 2:
+                cam_->AutoFunctionAOISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionAOISelector_AOI3);
+                break;
+            case 3:
+                cam_->AutoFunctionAOISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionAOISelector_AOI4);
+                break;
+            case 4:
+                cam_->AutoFunctionAOISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionAOISelector_AOI5);
+                break;
+            case 5:
+                cam_->AutoFunctionAOISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionAOISelector_AOI6);
+                break;
+            case 6:
+                cam_->AutoFunctionAOISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionAOISelector_AOI7);
+                break;
+            case 7:
+                cam_->AutoFunctionAOISelector.SetValue(AutoFunctionROISelectorEnums::AutoFunctionAOISelector_AOI8);
+                break;
+            default:
+                return "Error: unknown value";
+            }
+        }
+        else
+        {
+            RCLCPP_ERROR_STREAM(LOGGER_GIGE, "Error while trying to change the auto function AOI selector. The connected camera does not support this feature");
+            return "The connected camera does not support this feature";
+        }
+    }
+    catch (const GenICam::GenericException &e)
+    {
+        RCLCPP_ERROR_STREAM(LOGGER_GIGE, "An exception while changing the auto function AOI selector occurred: " << e.GetDescription());
+        return e.GetDescription();
+    }
+    return "done";
 }
 
 template <>
