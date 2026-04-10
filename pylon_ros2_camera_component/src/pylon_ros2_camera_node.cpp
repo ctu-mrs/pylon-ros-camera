@@ -1058,11 +1058,23 @@ bool PylonROS2CameraNode::applyStartupServiceParameters()
 
 bool PylonROS2CameraNode::initAndRegister()
 {
-  this->pylon_camera_ = PylonROS2Camera::create(this->pylon_camera_parameter_set_.deviceUserID());
-  if (this->pylon_camera_parameter_set_.deviceUserID() != "")
+  PylonROS2Camera::logAvailableDevices();
+
+  if (!this->pylon_camera_parameter_set_.deviceUserID().empty())
+  {
+    this->pylon_camera_ = PylonROS2Camera::create(this->pylon_camera_parameter_set_.deviceUserID());
     RCLCPP_INFO_STREAM(LOGGER, "Pylon camera instance created with the following user id: " << this->pylon_camera_parameter_set_.deviceUserID());
+  }
+  else if (!this->pylon_camera_parameter_set_.deviceSerialNumber().empty())
+  {
+    this->pylon_camera_ = PylonROS2Camera::createFromSerial(this->pylon_camera_parameter_set_.deviceSerialNumber());
+    RCLCPP_INFO_STREAM(LOGGER, "Pylon camera instance created with the following serial number: " << this->pylon_camera_parameter_set_.deviceSerialNumber());
+  }
   else
+  {
+    this->pylon_camera_ = PylonROS2Camera::create(this->pylon_camera_parameter_set_.deviceUserID());
     RCLCPP_INFO(LOGGER, "No user id for the camera has been set");
+  }
 
   if (this->pylon_camera_ == nullptr)
   {
@@ -1074,19 +1086,55 @@ bool PylonROS2CameraNode::initAndRegister()
       this->component_status_pub_->publish(this->cm_status_);
     }
 
-    RCLCPP_WARN_STREAM(LOGGER, "Failed to connect camera device with device user id: "<< this->pylon_camera_parameter_set_.deviceUserID() << ". "
-                            << "Wait and retry to connect until the specified camera is available...");
+    if (!this->pylon_camera_parameter_set_.deviceUserID().empty())
+    {
+      RCLCPP_WARN_STREAM(LOGGER, "Failed to connect camera device with device user id: " << this->pylon_camera_parameter_set_.deviceUserID() << ". "
+                              << "Wait and retry to connect until the specified camera is available...");
+    }
+    else if (!this->pylon_camera_parameter_set_.deviceSerialNumber().empty())
+    {
+      RCLCPP_WARN_STREAM(LOGGER, "Failed to connect camera device with serial number: " << this->pylon_camera_parameter_set_.deviceSerialNumber() << ". "
+                              << "Wait and retry to connect until the specified camera is available...");
+    }
+    else
+    {
+      RCLCPP_WARN(LOGGER, "Failed to connect camera device. Wait and retry until an available camera is found...");
+    }
 
     // wait and retry until a camera is present
     rclcpp::Time end = rclcpp::Node::now() + std::chrono::duration<double>(15);
     rclcpp::Rate r(0.5);
     while (rclcpp::ok() && this->pylon_camera_ == nullptr)
     {
-      this->pylon_camera_ = PylonROS2Camera::create(this->pylon_camera_parameter_set_.deviceUserID());
+      if (!this->pylon_camera_parameter_set_.deviceUserID().empty())
+      {
+        this->pylon_camera_ = PylonROS2Camera::create(this->pylon_camera_parameter_set_.deviceUserID());
+      }
+      else if (!this->pylon_camera_parameter_set_.deviceSerialNumber().empty())
+      {
+        this->pylon_camera_ = PylonROS2Camera::createFromSerial(this->pylon_camera_parameter_set_.deviceSerialNumber());
+      }
+      else
+      {
+        this->pylon_camera_ = PylonROS2Camera::create(this->pylon_camera_parameter_set_.deviceUserID());
+      }
+
       if (this->pylon_camera_ == nullptr)
       {
-        RCLCPP_WARN_STREAM(LOGGER, "Failed to connect camera device with device user id: "<< this->pylon_camera_parameter_set_.deviceUserID() << ". "
-                                    << "Trying again in a bit...");
+        if (!this->pylon_camera_parameter_set_.deviceUserID().empty())
+        {
+          RCLCPP_WARN_STREAM(LOGGER, "Failed to connect camera device with device user id: " << this->pylon_camera_parameter_set_.deviceUserID() << ". "
+                                      << "Trying again in a bit...");
+        }
+        else if (!this->pylon_camera_parameter_set_.deviceSerialNumber().empty())
+        {
+          RCLCPP_WARN_STREAM(LOGGER, "Failed to connect camera device with serial number: " << this->pylon_camera_parameter_set_.deviceSerialNumber() << ". "
+                                      << "Trying again in a bit...");
+        }
+        else
+        {
+          RCLCPP_WARN(LOGGER, "Failed to connect camera device. Trying again in a bit...");
+        }
       }
 
       if (rclcpp::Node::now() > end)
@@ -1107,7 +1155,8 @@ bool PylonROS2CameraNode::initAndRegister()
     }
   }
 
-  if (this->pylon_camera_ != nullptr && this->pylon_camera_parameter_set_.deviceUserID().empty())
+  if (this->pylon_camera_ != nullptr && this->pylon_camera_parameter_set_.deviceUserID().empty() &&
+      this->pylon_camera_parameter_set_.deviceSerialNumber().empty())
   {
     this->pylon_camera_parameter_set_.setDeviceUserId(*this, this->pylon_camera_->deviceUserID());
     this->cm_status_.status_id = pylon_ros2_camera_interfaces::msg::ComponentStatus::RUNNING;

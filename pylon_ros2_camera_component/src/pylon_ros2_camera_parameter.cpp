@@ -76,6 +76,7 @@ PylonROS2CameraParameter::PylonROS2CameraParameter() :
     grab_strategy_(0),
     camera_frame_("pylon_camera"),
     device_user_id_(""),
+    device_serial_number_(""),
     frame_rate_(5.0),
     camera_info_url_(""),
     image_encoding_("")
@@ -112,6 +113,16 @@ void PylonROS2CameraParameter::readFromRosParameterServer(rclcpp::Node& nh)
     }
     
     nh.get_parameter("device_user_id", this->device_user_id_);
+
+    // device serial number
+    RCLCPP_DEBUG(LOGGER, "---> device_serial_number");
+
+    if (!nh.has_parameter("device_serial_number"))
+    {
+        nh.declare_parameter<std::string>("device_serial_number", "");
+    }
+
+    nh.get_parameter("device_serial_number", this->device_serial_number_);
 
     // frame rate
     RCLCPP_DEBUG(LOGGER, "---> frame_rate");
@@ -553,9 +564,13 @@ void PylonROS2CameraParameter::validateParameterSet(rclcpp::Node& nh)
     {
         RCLCPP_INFO_STREAM(LOGGER, "Trying to connect the camera device with the following device user id: " << this->device_user_id_.c_str());
     }
+    else if (!this->device_serial_number_.empty())
+    {
+        RCLCPP_INFO_STREAM(LOGGER, "Trying to connect the camera device with the following serial number: " << this->device_serial_number_.c_str());
+    }
     else
     {
-        RCLCPP_INFO_STREAM(LOGGER, "No Device User ID set -> Will connect the first available camera device");
+        RCLCPP_INFO_STREAM(LOGGER, "No Device User ID or Serial Number set -> Will connect the first available camera device");
     }
 
     if (this->frame_rate_ < 0 && this->frame_rate_ != -1)
@@ -596,6 +611,11 @@ void PylonROS2CameraParameter::validateParameterSet(rclcpp::Node& nh)
 const std::string& PylonROS2CameraParameter::deviceUserID() const
 {
     return this->device_user_id_;
+}
+
+const std::string& PylonROS2CameraParameter::deviceSerialNumber() const
+{
+    return this->device_serial_number_;
 }
 
 std::string PylonROS2CameraParameter::shutterModeString() const

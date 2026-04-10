@@ -37,6 +37,26 @@ namespace pylon_ros2_camera
 namespace
 {
     static const rclcpp::Logger LOGGER = rclcpp::get_logger("basler.pylon.ros2.pylon_ros2_camera");
+
+    bool isUsbDevice(const Pylon::CDeviceInfo& device_info)
+    {
+        return device_info.IsDeviceClassAvailable() && device_info.GetDeviceClass() == "BaslerUsb";
+    }
+
+    std::string getUsbSpeedMode(const Pylon::CDeviceInfo& device_info, Pylon::CTlFactory& tl_factory)
+    {
+        Pylon::CInstantCamera device(tl_factory.CreateDevice(device_info));
+        device.Open();
+
+        GenApi::INodeMap& node_map = device.GetNodeMap();
+        GenApi::CEnumerationPtr usb_speed_mode(node_map.GetNode("BslUSBSpeedMode"));
+        if (!usb_speed_mode || !GenApi::IsReadable(usb_speed_mode))
+        {
+            return "";
+        }
+
+        return std::string(usb_speed_mode->ToString().c_str());
+    }
 }
 
 enum PYLON_CAM_TYPE
@@ -266,6 +286,137 @@ std::unique_ptr<PylonROS2Camera> PylonROS2Camera::create(const std::string& devi
             << e.GetDescription());
 
         return nullptr;
+    }
+}
+
+std::unique_ptr<PylonROS2Camera> PylonROS2Camera::createFromSerial(const std::string& serial_number)
+{
+    if (serial_number.empty())
+    {
+        return create(std::string());
+    }
+
+    try
+    {
+        // Before using any pylon methods, the pylon runtime must be initialized.
+        Pylon::PylonInitialize();
+        Pylon::CTlFactory& tl_factory = Pylon::CTlFactory::GetInstance();
+
+        Pylon::DeviceInfoList_t device_list;
+
+        if (0 == tl_factory.EnumerateDevices(device_list))
+        {
+            Pylon::PylonTerminate();
+            RCLCPP_ERROR_ONCE(LOGGER, "No available camera device");
+            return nullptr;
+        }
+
+        bool found_desired_device = false;
+        Pylon::DeviceInfoList_t::const_iterator it;
+        for (it = device_list.begin(); it != device_list.end(); ++it)
+        {
+            std::string device_serial_number_found(it->GetSerialNumber());
+            if ((0 == serial_number.compare(device_serial_number_found)) ||
+                (serial_number.length() < device_serial_number_found.length() &&
+                 (0 == device_serial_number_found.compare(device_serial_number_found.length() -
+                                                          serial_number.length(),
+                                                          serial_number.length(),
+                                                          serial_number))))
+            {
+                found_desired_device = true;
+                break;
+            }
+        }
+
+        if (found_desired_device)
+        {
+            RCLCPP_INFO_STREAM(LOGGER, "Found camera device!"
+                                            << " Device Model: " << it->GetModelName()
+                                            << " with Serial number: " << serial_number);
+
+            PYLON_CAM_TYPE cam_type = detectPylonCamType(*it);
+            return createFromDevice(cam_type, tl_factory.CreateDevice(*it));
+        }
+
+        RCLCPP_ERROR_STREAM(LOGGER, "Couldn't find the camera that matches the "
+            << "given Serial Number: " << serial_number << "! "
+            << "Either the serial number is wrong or the camera device is not connected (yet)");
+
+        return nullptr;
+    }
+    catch (GenICam::GenericException &e)
+    {
+        RCLCPP_ERROR_STREAM(LOGGER, "An exception occurred while opening the specified camera device "
+            << "with Serial Number: " << serial_number << ": \r\n"
+            << e.GetDescription());
+
+        return nullptr;
+    }
+}
+
+void PylonROS2Camera::logAvailableDevices()
+{
+    try
+    {
+        Pylon::PylonInitialize();
+        Pylon::CTlFactory& tl_factory = Pylon::CTlFactory::GetInstance();
+
+        Pylon::DeviceInfoList_t device_list;
+        if (0 == tl_factory.EnumerateDevices(device_list))
+        {
+            RCLCPP_INFO(LOGGER, "No camera devices detected during node initialization");
+            Pylon::PylonTerminate();
+            return;
+        }
+
+        RCLCPP_INFO_STREAM(LOGGER, "Detected " << device_list.size() << " connected camera device(s):");
+
+        size_t index = 1;
+        for (const auto& device_info : device_list)
+        {
+            const std::string model_name = device_info.IsModelNameAvailable()
+                ? std::string(device_info.GetModelName())
+                : std::string("<unknown>");
+            const std::string serial_number = device_info.IsSerialNumberAvailable()
+                ? std::string(device_info.GetSerialNumber())
+                : std::string("<unknown>");
+            const std::string user_id = device_info.IsUserDefinedNameAvailable()
+                ? std::string(device_info.GetUserDefinedName())
+                : std::string("");
+
+            RCLCPP_INFO_STREAM(LOGGER, "  [" << index++ << "] Device Model: " << model_name
+                                            << ", Serial Number: " << serial_number
+                                            << ", Device User Id: "
+                                            << (user_id.empty() ? std::string("<empty>") : user_id));
+
+            if (isUsbDevice(device_info))
+            {
+                try
+                {
+                    const std::string usb_speed_mode = getUsbSpeedMode(device_info, tl_factory);
+                    if (!usb_speed_mode.empty() && usb_speed_mode != "SuperSpeed")
+                    {
+                        RCLCPP_WARN_STREAM(LOGGER, "USB camera " << model_name
+                            << " (Serial Number: " << serial_number
+                            << ") is connected below USB3 SuperSpeed and is currently enumerated as "
+                            << usb_speed_mode << ".");
+                    }
+                }
+                catch (const GenICam::GenericException& e)
+                {
+                    RCLCPP_WARN_STREAM(LOGGER, "Failed to determine USB speed mode for camera "
+                        << model_name << " (Serial Number: " << serial_number << "): "
+                        << e.GetDescription());
+                }
+            }
+        }
+
+        Pylon::PylonTerminate();
+    }
+    catch (GenICam::GenericException &e)
+    {
+        RCLCPP_WARN_STREAM(LOGGER, "Failed to enumerate camera devices during node initialization: "
+            << e.GetDescription());
     }
 }
 

@@ -71,6 +71,19 @@ public:
     static std::unique_ptr<PylonROS2Camera> create(const std::string& device_user_id);
 
     /**
+     * Create a new PylonROS2Camera instance based on the serial number of the camera.
+     * @param serial_number Camera serial number. If the string is empty, the
+     * first camera that could be found is returned.
+     * @return new PylonROS2Camera instance or NULL if the camera was not found.
+     */
+    static std::unique_ptr<PylonROS2Camera> createFromSerial(const std::string& serial_number);
+
+    /**
+     * Log all currently connected camera devices discovered by pylon.
+     */
+    static void logAvailableDevices();
+
+    /**
      * Configures the camera according to the software trigger mode.
      * @return true if all the configuration could be set up.
      */
