@@ -1442,18 +1442,82 @@ bool PylonROS2CameraNode::startGrabbing()
   }
 
   // Framerate Settings
-  RCLCPP_DEBUG_ONCE(LOGGER, "Maximum possible framerate is %.2f Hz", this->pylon_camera_->maxPossibleFramerate());
-  if (this->pylon_camera_->maxPossibleFramerate() < this->pylon_camera_parameter_set_.frameRate())
+  const double requested_frame_rate = this->pylon_camera_parameter_set_.frameRate();
+  const double max_possible_frame_rate = this->pylon_camera_->maxPossibleFramerate();
+  RCLCPP_DEBUG_ONCE(LOGGER, "Maximum possible framerate is %.2f Hz", max_possible_frame_rate);
+  if (max_possible_frame_rate < this->pylon_camera_parameter_set_.frameRate())
   {
     RCLCPP_INFO(LOGGER, "Desired framerate %.2f is higher than max possible. Will limit framerate to: %.2f Hz",
               this->pylon_camera_parameter_set_.frameRate(),
-              this->pylon_camera_->maxPossibleFramerate());
-    this->pylon_camera_parameter_set_.setFrameRate(*this, this->pylon_camera_->maxPossibleFramerate());
+              max_possible_frame_rate);
+    this->pylon_camera_parameter_set_.setFrameRate(*this, max_possible_frame_rate);
   }
   else if (this->pylon_camera_parameter_set_.frameRate() == -1)
   {
-    this->pylon_camera_parameter_set_.setFrameRate(*this, this->pylon_camera_->maxPossibleFramerate());
-    RCLCPP_INFO(LOGGER, "Max possible framerate with the current camera calibration is %.2f Hz", this->pylon_camera_->maxPossibleFramerate());
+    this->pylon_camera_parameter_set_.setFrameRate(*this, max_possible_frame_rate);
+    RCLCPP_INFO(LOGGER, "Max possible framerate with the current camera calibration is %.2f Hz", max_possible_frame_rate);
+  }
+
+  if (!this->pylon_camera_->isBlaze() && requested_frame_rate != -1)
+  {
+    const double effective_frame_rate = this->pylon_camera_parameter_set_.frameRate();
+    const std::string enable_result = this->pylon_camera_->enableAcquisitionFrameRate(true);
+    if (!startupParameterSucceeded(enable_result))
+    {
+      RCLCPP_DEBUG_STREAM(LOGGER, "Could not explicitly enable acquisition frame rate control: " << enable_result);
+    }
+
+    const std::string set_result = this->pylon_camera_->setAcquisitionFrameRate(static_cast<float>(effective_frame_rate));
+    if (startupParameterSucceeded(set_result))
+    {
+      RCLCPP_INFO(LOGGER, "Camera-side acquisition frame rate set to %.2f Hz", effective_frame_rate);
+    }
+    else
+    {
+      RCLCPP_WARN_STREAM(LOGGER,
+        "Failed to apply camera-side acquisition frame rate limit of " << effective_frame_rate
+        << " Hz: " << set_result
+        << ". The driver will continue throttling in software only, which can increase dropped grabs on high-throughput links.");
+    }
+
+    if (this->pylon_camera_parameter_set_.grab_strategy_ == 0)
+    {
+      const std::string stop_result = this->pylon_camera_->grabbingStopping();
+      if (!startupParameterSucceeded(stop_result))
+      {
+        RCLCPP_WARN_STREAM(LOGGER, "Failed to reconfigure grab pipeline for low-latency explicit-FPS streaming: " << stop_result);
+      }
+      else
+      {
+        if (this->pylon_camera_->setGrabbingStrategy(1))
+        {
+          this->pylon_camera_parameter_set_.grab_strategy_ = 1;
+          const std::string queue_result = this->pylon_camera_->setOutputQueueSize(1);
+          if (!startupParameterSucceeded(queue_result))
+          {
+            RCLCPP_DEBUG_STREAM(LOGGER, "Could not reduce output queue size for explicit-FPS streaming: " << queue_result);
+          }
+
+          const std::string restart_result = this->pylon_camera_->grabbingStarting();
+          if (startupParameterSucceeded(restart_result))
+          {
+            RCLCPP_INFO(LOGGER, "Explicit frame-rate streaming uses GrabStrategy_LatestImageOnly with output queue size 1 to minimize burst delivery jitter.");
+          }
+          else
+          {
+            RCLCPP_WARN_STREAM(LOGGER, "Failed to restart grabbing after low-latency explicit-FPS reconfiguration: " << restart_result);
+          }
+        }
+        else
+        {
+          const std::string restart_result = this->pylon_camera_->grabbingStarting();
+          if (!startupParameterSucceeded(restart_result))
+          {
+            RCLCPP_WARN_STREAM(LOGGER, "Failed to restore grabbing after explicit-FPS strategy reconfiguration attempt: " << restart_result);
+          }
+        }
+      }
+    }
   }
   
   return true;
@@ -1461,7 +1525,10 @@ bool PylonROS2CameraNode::startGrabbing()
 
 void PylonROS2CameraNode::spin()
 {
-  double frame_step = 1.0 / this->frameRate();
+  const double frame_step = 1.0 / this->frameRate();
+  const auto frame_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    std::chrono::duration<double>(frame_step));
+  auto next_cycle_time = std::chrono::steady_clock::now();
 
   while (!this->stop_spinning_ && rclcpp::ok())
   {
@@ -1495,6 +1562,7 @@ void PylonROS2CameraNode::spin()
       r.sleep();
 
       this->init();
+      next_cycle_time = std::chrono::steady_clock::now();
 
       continue;
     }
@@ -1630,11 +1698,15 @@ void PylonROS2CameraNode::spin()
     double loop_frame_rate = 1.0 / tdiff;
     RCLCPP_DEBUG_STREAM(LOGGER, "Actual spinning frame rate: " << loop_frame_rate);
 
-    // the user has set a frame rate - wait accordingly to respect it
-    if (tdiff > 0)  // just in case of but should never happen
+    next_cycle_time += frame_period;
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next_cycle_time)
     {
-      double sleep_time = frame_step - tdiff;
-      std::this_thread::sleep_for(std::chrono::duration<double>(sleep_time));
+      std::this_thread::sleep_until(next_cycle_time);
+    }
+    else if (now - next_cycle_time > frame_period)
+    {
+      next_cycle_time = now;
     }
 
     // compute actual frame rate, just to check

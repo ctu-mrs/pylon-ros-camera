@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -69,6 +70,23 @@ namespace
     {
         static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
         RCLCPP_ERROR_THROTTLE(LOGGER_BASE, steady_clock, 2000, "Error: Grab was not successful");
+    }
+
+    inline GenApi::CFloatPtr acquisitionFrameRateNode(GenApi::INodeMap& node_map)
+    {
+        GenApi::CFloatPtr frame_rate_node(node_map.GetNode("AcquisitionFrameRate"));
+        if (frame_rate_node && GenApi::IsAvailable(frame_rate_node))
+        {
+            return frame_rate_node;
+        }
+
+        frame_rate_node = GenApi::CFloatPtr(node_map.GetNode("AcquisitionFrameRateAbs"));
+        if (frame_rate_node && GenApi::IsAvailable(frame_rate_node))
+        {
+            return frame_rate_node;
+        }
+
+        return GenApi::CFloatPtr();
     }
 }
 
@@ -5142,10 +5160,48 @@ std::string PylonROS2CameraImpl<CameraTraitT>::setMultiCameraChannel(const int& 
 }
 
 template <typename CameraTraitT>
-std::string PylonROS2CameraImpl<CameraTraitT>::setAcquisitionFrameRate(const float& framerate __attribute__((unused)))
+std::string PylonROS2CameraImpl<CameraTraitT>::setAcquisitionFrameRate(const float& framerate)
 {
-    RCLCPP_DEBUG(LOGGER_BASE, "Feature not available except for blaze");
-    return "Feature not available except for blaze";
+    try
+    {
+        GenApi::INodeMap& node_map = cam_->GetNodeMap();
+        GenApi::CBooleanPtr enable_node(node_map.GetNode("AcquisitionFrameRateEnable"));
+        if (enable_node && GenApi::IsWritable(enable_node))
+        {
+            enable_node->SetValue(true);
+        }
+
+        GenApi::CFloatPtr frame_rate_node = acquisitionFrameRateNode(node_map);
+        if (frame_rate_node && GenApi::IsWritable(frame_rate_node))
+        {
+            double target_frame_rate = static_cast<double>(framerate);
+            if (GenApi::IsReadable(frame_rate_node))
+            {
+                const double min_frame_rate = frame_rate_node->GetMin();
+                const double max_frame_rate = frame_rate_node->GetMax();
+                if (target_frame_rate < min_frame_rate || target_frame_rate > max_frame_rate)
+                {
+                    RCLCPP_WARN_STREAM(LOGGER_BASE,
+                        "Requested acquisition frame rate " << target_frame_rate
+                        << " Hz is outside the camera-supported range [" << min_frame_rate
+                        << ", " << max_frame_rate << "] Hz. Clamping to the supported range.");
+                    target_frame_rate = std::clamp(target_frame_rate, min_frame_rate, max_frame_rate);
+                }
+            }
+
+            frame_rate_node->SetValue(target_frame_rate);
+            return "done";
+        }
+
+        RCLCPP_ERROR_STREAM(LOGGER_BASE,
+            "Error while trying to change the acquisition frame rate. The connected Camera not supporting this feature");
+        return "The connected Camera not supporting this feature";
+    }
+    catch ( const GenICam::GenericException &e )
+    {
+        RCLCPP_ERROR_STREAM(LOGGER_BASE, "An exception while changing acquisition frame rate occurred:" << e.GetDescription());
+        return e.GetDescription();
+    }
 }
 
 template <typename CameraTraitT>
@@ -5198,10 +5254,32 @@ std::string PylonROS2CameraImpl<CameraTraitT>::enableDistortionCorrection(const 
 }
 
 template <typename CameraTraitT>
-std::string PylonROS2CameraImpl<CameraTraitT>::enableAcquisitionFrameRate(const bool& enable __attribute__((unused)))
+std::string PylonROS2CameraImpl<CameraTraitT>::enableAcquisitionFrameRate(const bool& enable)
 {
-    RCLCPP_DEBUG(LOGGER_BASE, "Feature not available except for blaze");
-    return "Feature not available except for blaze";
+    try
+    {
+        GenApi::INodeMap& node_map = cam_->GetNodeMap();
+        GenApi::CBooleanPtr enable_node(node_map.GetNode("AcquisitionFrameRateEnable"));
+        if (enable_node && GenApi::IsWritable(enable_node))
+        {
+            enable_node->SetValue(enable);
+            return "done";
+        }
+
+        if (enable && acquisitionFrameRateNode(node_map))
+        {
+            return "done";
+        }
+
+        RCLCPP_ERROR_STREAM(LOGGER_BASE,
+            "Error while trying to change acquisition frame rate enable. The connected Camera not supporting this feature");
+        return "The connected Camera not supporting this feature";
+    }
+    catch ( const GenICam::GenericException &e )
+    {
+        RCLCPP_ERROR_STREAM(LOGGER_BASE, "An exception while changing acquisition frame rate enable occurred:" << e.GetDescription());
+        return e.GetDescription();
+    }
 }
 
 template <typename CameraTraitT>
