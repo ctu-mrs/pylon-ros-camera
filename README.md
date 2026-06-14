@@ -4,53 +4,23 @@ The MRS fork of the official pylon ROS2 driver for [Basler](http://www.baslerweb
 
 This driver provides many functionalities available through the Basler [pylon Camera Software Suite](https://www.baslerweb.com/en/products/software/basler-pylon-camera-software-suite/) C++ API.
 
-**Please Note:**
-This project is offered with no technical support by Basler AG.
-You are welcome to post any questions or issues on [GitHub](https://github.com/basler/pylon-ros-camera/issues)
-
-
 ## Installation
 
 ### Prerequisites
 
-- From [Ubuntu 24.04 Noble Numbat](https://releases.ubuntu.com/noble/)
-- From [ROS2 Jazzy Jalisco](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html). Your ROS2 environment must be [configured](https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Configuring-ROS2-Environment.html), your workspace [created](https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Creating-A-Workspace/Creating-A-Workspace.html), and colcon, used to build the packages, [installed](https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Colcon-Tutorial.html).
-- [rosdep](https://docs.ros.org/en/jazzy/Tutorials/Intermediate/Rosdep.html). rosdep must be installed as a debian package (`sudo apt update && sudo apt install python3-rosdep && sudo rosdep init && rosdep update`).
-- From [pylon Camera Software Suite](https://www2.baslerweb.com/en/downloads/software-downloads/) version 7.5.0 or newer. The latest APi libraries must be installed manually. Download and install the latest pylon Camera Software Suite Linux Debian Installer Package for your architecture. You may be experiencing some problems with the codemeter debian package installation. Just drop it for now and install only the pylon debian package in this case.
-- From [pylon Supplementary Package for blaze](https://www2.baslerweb.com/en/downloads/software-downloads/) version 1.6.0 or newer (compatibility with the installed pylon Camera Software Suite needs to be ensured, please refer to the documentation). The latest APi libraries must be installed manually. Download and install the latest pylon Supplementary Package for blaze Linux Debian Installer Package for your architecture.
-- [Git](https://git-scm.com/). Git must be installed as a debian package (`sudo apt update && sudo apt install git`).
-- [xterm](https://invisible-island.net/xterm/). The xterm terminal emulator must be installed (refer to the *Know Issues* section below) as a debian package (`sudo apt update && sudo apt install xterm`).
+- [Ubuntu 24.04 Noble Numbat](https://releases.ubuntu.com/noble/) + [ROS2 Jazzy Jalisco](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html).
+
+Run `install.sh` to resolve the Pylon SDK:
+- [pylon Camera Software Suite](https://www2.baslerweb.com/en/downloads/software-downloads/) (version 7.5.0 or newer)
+- [pylon Supplementary Package for blaze](https://www2.baslerweb.com/en/downloads/software-downloads/) (version 1.6.0 or newer)
+
 
 ### Install and build the packages
 
-This repository including the pylon ROS2 packages must be cloned in your workspace (e.g., `dev_ws` for instance):  
-```
-cd ~/dev_ws/src && git clone -b jazzy https://github.com/basler/pylon-ros-camera pylon_ros2_camera
-```  
-
-Install the ROS2 dependencies required by the pylon ROS2 packages:  
-``cd ~/dev_ws && rosdep install --from-paths src --ignore-src -r -y``  
-You may experience some problems with the `diagnostic_updater` and `pcl_ros` dependencies. In this case, install them by executing the following commands:  
-```
-sudo apt install ros-jazzy-diagnostic-updater
-sudo apt install ros-jazzy-pcl-ros
-```
-
-Compile the workspace using `colcon`:  
-``cd ~/dev_ws && colcon build``  
-
-**Note**: The --symlink-install flag can be added to the `colcon build` command. This allows the installed files to be changed by changing the files in the source space (e.g., Python files or other not compiled resourced) for faster iteration (refer to [the ROS2 documentation](https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Colcon-Tutorial.html)).
-
-**Note**: The packages are built in Release by default. The build type can be modfied by using the `--cmake-args` flag (for instance `colcon build --symlink-install --cmake-args=-DCMAKE_BUILD_TYPE=Debug`).
-
-Source the environment:  
-``cd ~/dev_ws && . install/setup.bash``  
-
-**Note**: This step can be skipped if the `setup.bash` file is sourced in your `.bashrc`.
+Clone this repository and build it in your ROS 2 workspace.
 
 Start the driver:  
-``ros2 launch pylon_ros2_camera_wrapper pylon_ros2_camera.launch.py``  or  
-``ros2 launch pylon_ros2_camera_wrapper my_blaze.launch.py``  to start the acquisition through the blaze.  
+``ros2 launch pylon_ros2_camera_wrapper pylon_ros2_camera.launch.py``
 
 
 ## Usage in a nutshell

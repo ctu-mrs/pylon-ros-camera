@@ -105,7 +105,7 @@ def _launch_node(context: LaunchContext):
     if enable_status_publisher is not None:
         parameter_overrides['enable_status_publisher'] = enable_status_publisher
 
-    enable_current_params_publisher = _resolve_param_override(context, 'enable_current_params_publisher', ros_params, True, _parse_bool)
+    enable_current_params_publisher = _resolve_param_override(context, 'enable_current_params_publisher', ros_params, False, _parse_bool)
     if enable_current_params_publisher is not None:
         parameter_overrides['enable_current_params_publisher'] = enable_current_params_publisher
 

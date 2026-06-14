@@ -1172,16 +1172,42 @@ bool PylonROS2CameraNode::initAndRegister()
     return false;
   }
 
-  if (!this->pylon_camera_->registerCameraConfiguration())
+  const bool has_trigger_mode_override = hasStartupOverride(*this, "trigger_mode");
+  const bool has_trigger_source_override = hasStartupOverride(*this, "trigger_source");
+
+  bool startup_trigger_mode = false;
+  int startup_trigger_source = 0;
+  if (has_trigger_mode_override)
   {
-    RCLCPP_ERROR_STREAM(LOGGER, "Error while registering the camera configuration to software-trigger mode!");
-    this->cm_status_.status_id = pylon_ros2_camera_interfaces::msg::ComponentStatus::ERROR;
-    this->cm_status_.status_msg = "Error while registering the camera configuration";
-    if (this->pylon_camera_parameter_set_.enable_status_publisher_)
+    this->get_parameter("trigger_mode", startup_trigger_mode);
+  }
+  if (has_trigger_source_override)
+  {
+    this->get_parameter("trigger_source", startup_trigger_source);
+  }
+
+  const bool force_free_run_trigger = !has_trigger_mode_override;
+
+  // If no explicit startup trigger override is provided, keep the camera in a
+  // deterministic free-run state so user profile settings do not silently keep
+  // the trigger path active.
+  if (has_trigger_mode_override && startup_trigger_mode && startup_trigger_source == 0)
+  {
+    if (!this->pylon_camera_->registerCameraConfiguration())
     {
-      this->component_status_pub_->publish(this->cm_status_);
+      RCLCPP_ERROR_STREAM(LOGGER, "Error while registering the camera configuration to software-trigger mode!");
+      this->cm_status_.status_id = pylon_ros2_camera_interfaces::msg::ComponentStatus::ERROR;
+      this->cm_status_.status_msg = "Error while registering the camera configuration";
+      if (this->pylon_camera_parameter_set_.enable_status_publisher_)
+      {
+        this->component_status_pub_->publish(this->cm_status_);
+      }
+      return false;
     }
-    return false;
+  }
+  else if (has_trigger_mode_override)
+  {
+    RCLCPP_INFO_STREAM(LOGGER, "Startup trigger mode override requested without software-trigger defaults; not registering a software trigger configuration.");
   }
 
   if (!this->pylon_camera_->openCamera())
@@ -1194,6 +1220,14 @@ bool PylonROS2CameraNode::initAndRegister()
       this->component_status_pub_->publish(this->cm_status_);
     }
     return false;
+  }
+
+  if (force_free_run_trigger)
+  {
+    this->pylon_camera_->setTriggerSelector(0);
+    this->pylon_camera_->setTriggerSource(0);
+    this->pylon_camera_->setTriggerMode(false);
+    RCLCPP_INFO_STREAM(LOGGER, "No startup trigger override provided; forcing free-run trigger state.");
   }
 
   if (!this->pylon_camera_->applyCamSpecificStartupSettings(this->pylon_camera_parameter_set_))
@@ -1445,7 +1479,7 @@ bool PylonROS2CameraNode::startGrabbing()
   const double requested_frame_rate = this->pylon_camera_parameter_set_.frameRate();
   const double max_possible_frame_rate = this->pylon_camera_->maxPossibleFramerate();
   RCLCPP_DEBUG_ONCE(LOGGER, "Maximum possible framerate is %.2f Hz", max_possible_frame_rate);
-  if (max_possible_frame_rate < this->pylon_camera_parameter_set_.frameRate())
+  if (requested_frame_rate > 0 && max_possible_frame_rate < requested_frame_rate)
   {
     RCLCPP_INFO(LOGGER, "Desired framerate %.2f is higher than max possible. Will limit framerate to: %.2f Hz",
               this->pylon_camera_parameter_set_.frameRate(),
@@ -1454,11 +1488,10 @@ bool PylonROS2CameraNode::startGrabbing()
   }
   else if (this->pylon_camera_parameter_set_.frameRate() == -1)
   {
-    this->pylon_camera_parameter_set_.setFrameRate(*this, max_possible_frame_rate);
     RCLCPP_INFO(LOGGER, "Max possible framerate with the current camera calibration is %.2f Hz", max_possible_frame_rate);
   }
 
-  if (!this->pylon_camera_->isBlaze() && requested_frame_rate != -1)
+  if (!this->pylon_camera_->isBlaze() && requested_frame_rate > 0)
   {
     const double effective_frame_rate = this->pylon_camera_parameter_set_.frameRate();
     const std::string enable_result = this->pylon_camera_->enableAcquisitionFrameRate(true);
@@ -1525,9 +1558,10 @@ bool PylonROS2CameraNode::startGrabbing()
 
 void PylonROS2CameraNode::spin()
 {
-  const double frame_step = 1.0 / this->frameRate();
-  const auto frame_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-    std::chrono::duration<double>(frame_step));
+  const bool throttle_by_frame_rate = this->frameRate() > 0.0;
+  const auto frame_period = throttle_by_frame_rate ?
+    std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / this->frameRate())) :
+    std::chrono::steady_clock::duration::zero();
   auto next_cycle_time = std::chrono::steady_clock::now();
 
   while (!this->stop_spinning_ && rclcpp::ok())
@@ -1689,7 +1723,12 @@ void PylonROS2CameraNode::spin()
 
     if (this->pylon_camera_parameter_set_.enable_current_params_publisher_)
     {
-      this->publishCurrentParams();
+      const auto now = std::chrono::steady_clock::now();
+      if (now - this->last_current_params_publish_time_ >= current_params_publish_interval_)
+      {
+        this->publishCurrentParams();
+        this->last_current_params_publish_time_ = now;
+      }
     }
 
     // compute real frame rate, taking into account grabbing and other processes
@@ -1698,15 +1737,18 @@ void PylonROS2CameraNode::spin()
     double loop_frame_rate = 1.0 / tdiff;
     RCLCPP_DEBUG_STREAM(LOGGER, "Actual spinning frame rate: " << loop_frame_rate);
 
-    next_cycle_time += frame_period;
-    const auto now = std::chrono::steady_clock::now();
-    if (now < next_cycle_time)
+    if (throttle_by_frame_rate)
     {
-      std::this_thread::sleep_until(next_cycle_time);
-    }
-    else if (now - next_cycle_time > frame_period)
-    {
-      next_cycle_time = now;
+      next_cycle_time += frame_period;
+      const auto now = std::chrono::steady_clock::now();
+      if (now < next_cycle_time)
+      {
+        std::this_thread::sleep_until(next_cycle_time);
+      }
+      else if (now - next_cycle_time > frame_period)
+      {
+        next_cycle_time = now;
+      }
     }
 
     // compute actual frame rate, just to check

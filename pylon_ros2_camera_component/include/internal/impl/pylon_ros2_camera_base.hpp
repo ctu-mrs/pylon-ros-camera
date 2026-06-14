@@ -591,10 +591,13 @@ bool PylonROS2CameraImpl<CameraTrait>::grab(Pylon::CBaslerUniversalGrabResultPtr
 
     try
     {
+        const bool trigger_mode_on = (cam_->TriggerMode.GetValue() == TriggerModeEnums::TriggerMode_On);
+        const bool software_trigger_source = (cam_->TriggerSource.GetValue() == TriggerSourceEnums::TriggerSource_Software);
+
         // WaitForFrameTriggerReady to prevent trigger signal to get lost
         // this could happen, if 2xExecuteSoftwareTrigger() is only followed by 1xgrabResult()
         // -> 2nd trigger might get lost
-        if ((cam_->TriggerMode.GetValue() == TriggerModeEnums::TriggerMode_On))
+        if (trigger_mode_on && software_trigger_source)
         {
             if (!cam_->CanWaitForFrameTriggerReady())
             {

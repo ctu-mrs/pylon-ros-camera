@@ -1902,6 +1902,9 @@ protected:
   std::vector<std::size_t> sampling_indices_;
   std::array<float, 256> brightness_exp_lut_{};
 
+  std::chrono::steady_clock::time_point last_current_params_publish_time_{};
+  const std::chrono::milliseconds current_params_publish_interval_{200};
+
   bool is_sleeping_{false};
 
   // diagnostics
