@@ -99,7 +99,7 @@ PYLON_CAM_TYPE detectPylonCamType(const Pylon::CDeviceInfo& device_info)
                 {
                     return GIGE;
                 }
-                else if (model_name.compare(0, 3, "a2A") == 0)
+                else if (model_name.compare(0, 3, "a2A") || model_name.compare(0, 3, "dmA") == 0)
                 {
                     return GIGE2;
                 } 
