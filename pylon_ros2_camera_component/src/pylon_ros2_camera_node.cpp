@@ -1475,6 +1475,15 @@ bool PylonROS2CameraNode::startGrabbing()
       << "exposure = " << this->pylon_camera_->currentExposure());
   }
 
+  // On GigE cameras (at least dmA1920-51gm) changing the frame rate doesn't work.
+  // The problem seems that the camera doesn't permit chaning the FPS when enableAcquisitionFrameRate is True.
+  // As a fix we always disable it and then, if the config file requests a certain frame rate this is overriden.
+  const std::string disable_result = this->pylon_camera_->enableAcquisitionFrameRate(false);
+  if (!startupParameterSucceeded(disable_result))
+  {
+    RCLCPP_WARN_STREAM(LOGGER, "Could not disable acquisition frame rate control: " << disable_result);
+  }
+
   // Framerate Settings
   const double requested_frame_rate = this->pylon_camera_parameter_set_.frameRate();
   const double max_possible_frame_rate = this->pylon_camera_->maxPossibleFramerate();
