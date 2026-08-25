@@ -190,7 +190,14 @@ std::unique_ptr<PylonROS2Camera> createFromDevice(PYLON_CAM_TYPE cam_type, Pylon
         case DART:
             return std::make_unique<PylonROS2DARTCamera>(device);
         case BLAZE:
+#ifdef PYLON_WITH_BLAZE
             return std::make_unique<PylonROS2BlazeCamera>(device);
+#else
+            RCLCPP_ERROR_STREAM(LOGGER, "A blaze camera was detected, but this driver was "
+                    << "built without blaze support. Install the pylon supplementary package "
+                    << "for blaze and rebuild to use it.");
+            return nullptr;
+#endif
         case UNKNOWN:
         default:
             return nullptr;

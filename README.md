@@ -20,7 +20,9 @@ Run `install.sh` to resolve the Pylon SDK:
 Clone this repository and build it in your ROS 2 workspace.
 
 Start the driver:  
-``ros2 launch pylon_ros2_camera_wrapper pylon_ros2_camera.launch.py``
+```
+ros2 launch pylon_ros2_camera_wrapper pylon_ros2_camera.launch.py
+```
 
 
 ## Usage in a nutshell
