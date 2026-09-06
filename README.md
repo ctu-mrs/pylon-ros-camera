@@ -10,10 +10,11 @@ This driver provides many functionalities available through the Basler [pylon Ca
 
 - [Ubuntu 24.04 Noble Numbat](https://releases.ubuntu.com/noble/) + [ROS2 Jazzy Jalisco](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html).
 
-Run `install.sh` to resolve the Pylon SDK:
+Download the Pylon SDK from the Basler website:
 - [pylon Camera Software Suite](https://www2.baslerweb.com/en/downloads/software-downloads/) (version 7.5.0 or newer)
 - [pylon Supplementary Package for blaze](https://www2.baslerweb.com/en/downloads/software-downloads/) (version 1.6.0 or newer)
 
+Or obtain all dependencies via [private MRS PPA](https://mrs.fel.cvut.cz/gitlab/internal/ppa-private) using `sudo apt install -y pylon*`.
 
 ### Install and build the packages
 
