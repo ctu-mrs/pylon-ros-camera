@@ -7,10 +7,10 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 FILENAME_SDK=pylon_26.03.1-deb0_amd64.deb
-NASMRS_LINK_SDK=https://nasmrs.fel.cvut.cz/index.php/s/rQjRwRKjHj1CEA6/download
+NASMRS_LINK_SDK=https://nasmrs.fel.cvut.cz:3923/tmp_shares/cjhsbcrhyrpn/pylon_26.03.1-deb0_amd64.deb
 
 FILENAME_SUPP=pylon-supplementary-package-for-blaze-1.7.3.73dbe706a_amd64.deb
-NASMRS_LINK_SUPP=https://nasmrs.fel.cvut.cz/index.php/s/bV58ZwVr0v243b0/download
+NASMRS_LINK_SUPP=https://nasmrs.fel.cvut.cz:3923/tmp_shares/u8i85zd8nwim/pylon-supplementary-package-for-blaze-1.7.3.73dbe706a_amd64.deb
 
 # get ROS version
 distro=`lsb_release -r | awk '{ print $2 }'`

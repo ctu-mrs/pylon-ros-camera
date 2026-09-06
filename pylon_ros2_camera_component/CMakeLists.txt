@@ -44,6 +44,24 @@ find_package(Pylon QUIET)
 if (NOT ${Pylon_FOUND} OR "$ENV{Pylon_INCLUDE_DIRS}" STREQUAL "")
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindPylon.cmake")
 endif()
+# blaze (ToF) support lives in the separate "pylon supplementary package for blaze",
+# which is not part of the pylon SDK. Build blaze support only when its header is
+# actually present, so GigE/USB/dart cameras still build without that package.
+find_file(PYLON_BLAZE_HEADER
+	NAMES pylon/BlazeInstantCamera.h
+	PATHS ${Pylon_INCLUDE_DIRS}
+	NO_DEFAULT_PATH
+)
+if (PYLON_BLAZE_HEADER)
+	set(PYLON_WITH_BLAZE TRUE)
+	message(STATUS "pylon blaze support: ENABLED (${PYLON_BLAZE_HEADER})")
+else()
+	set(PYLON_WITH_BLAZE FALSE)
+	message(STATUS "pylon blaze support: DISABLED "
+		"(pylon/BlazeInstantCamera.h not found; install the pylon supplementary "
+		"package for blaze to enable it)")
+endif()
+
 # message("->    Pylon include directories: ${Pylon_INCLUDE_DIRS}")
 # message("->    Pylon library directories: ${Pylon_LIBRARY_DIRS}")
 # message("->    Pylon libraries: ${Pylon_LIBRARIES}")
@@ -148,6 +166,10 @@ target_include_directories(${PROJECT_NAME} SYSTEM
 target_compile_definitions(${PROJECT_NAME}
 	PRIVATE "PYLON_ROS2_CAMERA_BUILDING_DLL"
 )
+
+if (PYLON_WITH_BLAZE)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE "PYLON_WITH_BLAZE")
+endif()
 
 target_link_libraries(${PROJECT_NAME}
 	${PYLON_ROS2_CAMERA_LIBRARIES}
