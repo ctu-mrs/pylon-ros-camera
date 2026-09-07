@@ -275,6 +275,7 @@ PylonROS2CameraNode::PylonROS2CameraNode(const rclcpp::NodeOptions& options)
   , img_rect_pub_(nullptr)
   , set_user_output_srvs_()
   , grab_imgs_rect_as_(nullptr)
+  , stop_spinning_(true)
   , sampling_indices_()
   , brightness_exp_lut_()
   , is_sleeping_(false)
@@ -288,6 +289,28 @@ PylonROS2CameraNode::PylonROS2CameraNode(const rclcpp::NodeOptions& options)
   //RCUTILS_LOG_SEVERITY_ERROR
   //RCUTILS_LOG_SEVERITY_FATAL
 
+  // Keep the legacy synchronous/reliable publisher as the default. High-rate
+  // camera profiles can opt in without changing behavior for existing users.
+  declareStartupParameterIfNeeded(*this, "enable_async_image_publishing", false);
+  declareStartupParameterIfNeeded(*this, "use_sensor_data_qos", false);
+  declareStartupParameterIfNeeded(*this, "image_qos_depth", 5);
+  declareStartupParameterIfNeeded(*this, "raw_publish_queue_depth", 1);
+  declareStartupParameterIfNeeded(*this, "zenoh_session_config_uri", std::string{});
+  this->async_image_publishing_ =
+    this->get_parameter("enable_async_image_publishing").as_bool();
+  this->use_sensor_data_qos_ =
+    this->get_parameter("use_sensor_data_qos").as_bool();
+  const int image_qos_depth =
+    this->get_parameter("image_qos_depth").as_int();
+  this->image_qos_depth_ =
+    static_cast<std::size_t>(std::max(1, image_qos_depth));
+  const int raw_publish_queue_depth =
+    this->get_parameter("raw_publish_queue_depth").as_int();
+  this->raw_publish_queue_depth_ =
+    static_cast<std::size_t>(std::max(1, raw_publish_queue_depth));
+  // Launch consumes zenoh_session_config_uri before process startup. Keeping
+  // it declared here lets it live in the same per-camera ROS parameter file.
+
   // initializing the interfaces
   this->initInterfaces();
 
@@ -295,18 +318,28 @@ PylonROS2CameraNode::PylonROS2CameraNode(const rclcpp::NodeOptions& options)
   if (!this->init())
     return;
 
-  // starting spinning thread
   RCLCPP_INFO_STREAM(LOGGER, "Start image grabbing if node connects to topic with a spinning rate of: " << this->frameRate() << " Hz");
   this->stop_spinning_ = false;
+  if (this->async_image_publishing_)
+  {
+    // Keep middleware serialization and subscriber backpressure off the
+    // acquisition thread for high-bandwidth camera profiles.
+    this->raw_publish_thread_ = std::thread(&PylonROS2CameraNode::rawImagePublishLoop, this);
+  }
   this->spin_thread_ = std::thread(&PylonROS2CameraNode::spin, this);
 }
 
 PylonROS2CameraNode::~PylonROS2CameraNode()
 {
   this->stop_spinning_ = true;
+  this->raw_publish_cv_.notify_all();
   if (this->spin_thread_.joinable())
   {
     this->spin_thread_.join();
+  }
+  if (this->raw_publish_thread_.joinable())
+  {
+    this->raw_publish_thread_.join();
   }
 
   if (this->img_rect_pub_)
@@ -391,7 +424,16 @@ void PylonROS2CameraNode::initPublishers()
   this->component_status_pub_ = this->create_publisher<pylon_ros2_camera_interfaces::msg::ComponentStatus>(msg_name, 5);
 
   msg_name = msg_prefix + "image_raw";
-  this->img_raw_pub_ = image_transport::create_camera_publisher(this, msg_name);
+  if (this->use_sensor_data_qos_)
+  {
+    auto image_qos = rmw_qos_profile_sensor_data;
+    image_qos.depth = this->image_qos_depth_;
+    this->img_raw_pub_ = image_transport::create_camera_publisher(this, msg_name, image_qos);
+  }
+  else
+  {
+    this->img_raw_pub_ = image_transport::create_camera_publisher(this, msg_name);
+  }
 
   // blaze related topics
   msg_name = msg_prefix + "blaze_cloud"; this->blaze_cloud_topic_name_ = msg_name;
@@ -1617,13 +1659,22 @@ void PylonROS2CameraNode::spin()
     {
       // connected camera is not blaze
 
-      const bool any_subscriber = (this->img_raw_pub_.getNumSubscribers() != 0 || this->getNumSubscribersRectImagePub() != 0);
+      const bool publish_raw = this->img_raw_pub_.getNumSubscribers() != 0;
+      const bool publish_rect = this->getNumSubscribersRectImagePub() != 0;
+      const bool any_subscriber = publish_raw || publish_rect;
+      bool grabbed_frame = false;
+      if (!any_subscriber && !throttle_by_frame_rate)
+      {
+        // Avoid a full-core busy loop while a max-rate camera has no clients.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
       if (!this->isSleeping() && any_subscriber)
       {
         if (!this->grabImage())
         {
           continue;
         }
+        grabbed_frame = true;
       }
 
       // compute grab time
@@ -1632,19 +1683,8 @@ void PylonROS2CameraNode::spin()
       double grab_frame_rate = 1.0 / tdiff;
       RCLCPP_DEBUG_STREAM(LOGGER, "Frame grabbing rate: " << grab_frame_rate);
 
-      // publish if subscribers
-      if (this->img_raw_pub_.getNumSubscribers() > 0)
-      {
-        // get actual cam_info-object in every frame, because it might have
-        // changed due to a 'set_camera_info'-service call
-        sensor_msgs::msg::CameraInfo cam_info = this->camera_info_manager_->getCameraInfo();
-        cam_info.header.stamp = this->img_raw_msg_.header.stamp;
-        // publish via image_transport
-        this->img_raw_pub_.publish(this->img_raw_msg_, cam_info);
-      }
-
       // this->getNumSubscribersRectImagePub() involves that this->camera_info_manager_->isCalibrated() == true
-      if (this->getNumSubscribersRectImagePub() > 0)
+      if (publish_rect && grabbed_frame)
       {
         this->cv_bridge_img_rect_->header.stamp = this->img_raw_msg_.header.stamp;
         assert(this->pinhole_model_->initialized());
@@ -1671,6 +1711,22 @@ void PylonROS2CameraNode::spin()
           this->pinhole_model_->fromCameraInfo(this->camera_info_manager_->getCameraInfo());
           this->pinhole_model_->rectifyImage(cv_img_raw->image, this->cv_bridge_img_rect_->image);
           this->img_rect_pub_->publish(this->cv_bridge_img_rect_->toImageMsg());
+        }
+      }
+
+      if (publish_raw && grabbed_frame)
+      {
+        // Get the current CameraInfo for each frame because it may have changed
+        // through set_camera_info.
+        sensor_msgs::msg::CameraInfo cam_info = this->camera_info_manager_->getCameraInfo();
+        cam_info.header.stamp = this->img_raw_msg_.header.stamp;
+        if (this->async_image_publishing_)
+        {
+          this->queueRawImage(std::move(cam_info));
+        }
+        else
+        {
+          this->img_raw_pub_.publish(this->img_raw_msg_, cam_info);
         }
       }
     }
@@ -1765,6 +1821,84 @@ void PylonROS2CameraNode::spin()
     tdiff = check_loop_it_time - start_time;
     double check_frame_rate = 1.0 / tdiff;
     RCLCPP_DEBUG_STREAM(LOGGER, "Spinning frame rate (to check): " << check_frame_rate);
+  }
+}
+
+void PylonROS2CameraNode::queueRawImage(sensor_msgs::msg::CameraInfo camera_info)
+{
+  const std::string frame_id = this->img_raw_msg_.header.frame_id;
+  const std::string encoding = this->img_raw_msg_.encoding;
+  const std::uint32_t height = this->img_raw_msg_.height;
+  const std::uint32_t width = this->img_raw_msg_.width;
+  const std::uint32_t step = this->img_raw_msg_.step;
+  const std::uint8_t is_bigendian = this->img_raw_msg_.is_bigendian;
+  const std::size_t image_size = this->img_raw_msg_.data.size();
+
+  RawPublishFrame replacement;
+  {
+    std::lock_guard<std::mutex> lock(this->raw_publish_mutex_);
+
+    if (this->pending_raw_frames_.size() >= raw_publish_queue_depth_)
+    {
+      replacement = std::move(this->pending_raw_frames_.front());
+      this->pending_raw_frames_.pop_front();
+      ++this->dropped_raw_frames_;
+      RCLCPP_WARN_THROTTLE(
+        LOGGER, *this->get_clock(), 5000,
+        "Raw image publisher is slower than acquisition; dropped %zu queued frame(s) to keep acquisition realtime.",
+        static_cast<std::size_t>(this->dropped_raw_frames_));
+    }
+    else if (!this->reusable_raw_frames_.empty())
+    {
+      replacement = std::move(this->reusable_raw_frames_.back());
+      this->reusable_raw_frames_.pop_back();
+    }
+
+    this->pending_raw_frames_.push_back(
+      RawPublishFrame{std::move(this->img_raw_msg_), std::move(camera_info)});
+  }
+
+  // Reuse the released payload allocation for the next camera transfer. At
+  // startup this allocates only the small number of buffers needed by the
+  // bounded publisher pipeline.
+  this->img_raw_msg_ = std::move(replacement.image);
+  this->img_raw_msg_.header.frame_id = frame_id;
+  this->img_raw_msg_.encoding = encoding;
+  this->img_raw_msg_.height = height;
+  this->img_raw_msg_.width = width;
+  this->img_raw_msg_.step = step;
+  this->img_raw_msg_.is_bigendian = is_bigendian;
+  this->img_raw_msg_.data.resize(image_size);
+
+  this->raw_publish_cv_.notify_one();
+}
+
+void PylonROS2CameraNode::rawImagePublishLoop()
+{
+  while (rclcpp::ok())
+  {
+    RawPublishFrame frame;
+    {
+      std::unique_lock<std::mutex> lock(this->raw_publish_mutex_);
+      this->raw_publish_cv_.wait(lock, [this]() {
+        return this->stop_spinning_ || !this->pending_raw_frames_.empty();
+      });
+
+      if (this->stop_spinning_)
+      {
+        return;
+      }
+
+      frame = std::move(this->pending_raw_frames_.front());
+      this->pending_raw_frames_.pop_front();
+    }
+
+    this->img_raw_pub_.publish(frame.image, frame.camera_info);
+
+    {
+      std::lock_guard<std::mutex> lock(this->raw_publish_mutex_);
+      this->reusable_raw_frames_.push_back(std::move(frame));
+    }
   }
 }
 

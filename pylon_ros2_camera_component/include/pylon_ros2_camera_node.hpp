@@ -95,11 +95,17 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
+#include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 
 
@@ -221,6 +227,20 @@ protected:
    * @return false if an error occurred.
    */
   virtual bool grabImage();
+
+  /**
+   * @brief Queue the current raw frame for publication without blocking acquisition.
+   *
+   * The queue is latest-frame-only. If the middleware cannot keep up, an old
+   * unpublished frame is recycled so that the camera grab loop never waits on
+   * DDS/Zenoh serialization or a slow subscriber.
+   */
+  void queueRawImage(sensor_msgs::msg::CameraInfo camera_info);
+
+  /**
+   * @brief Publish queued raw frames from a thread independent of acquisition.
+   */
+  void rawImagePublishLoop();
 
   /**
    * @brief Update the exposure value on the camera
@@ -1894,7 +1914,25 @@ protected:
 
   // spinning thread
   std::thread spin_thread_;
+  std::thread raw_publish_thread_;
   std::atomic<bool> stop_spinning_;
+
+  struct RawPublishFrame
+  {
+    sensor_msgs::msg::Image image;
+    sensor_msgs::msg::CameraInfo camera_info;
+  };
+
+  std::mutex raw_publish_mutex_;
+  std::condition_variable raw_publish_cv_;
+  std::deque<RawPublishFrame> pending_raw_frames_;
+  std::vector<RawPublishFrame> reusable_raw_frames_;
+  std::uint64_t dropped_raw_frames_{0};
+  bool async_image_publishing_{false};
+  bool use_sensor_data_qos_{false};
+  std::size_t image_qos_depth_{10};
+  std::size_t raw_publish_queue_depth_{1};
+
   // mutex
   std::recursive_mutex grab_mutex_;
 

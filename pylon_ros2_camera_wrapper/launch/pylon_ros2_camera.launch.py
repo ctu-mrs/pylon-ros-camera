@@ -113,6 +113,13 @@ def _launch_node(context: LaunchContext):
     if parameter_overrides:
         parameters.append(parameter_overrides)
 
+    additional_env = {}
+    zenoh_session_config_uri = ros_params.get('zenoh_session_config_uri')
+    if zenoh_session_config_uri:
+        # rmw_zenoh reads this before the ROS node is constructed, so apply the
+        # per-camera selection to the launched process environment.
+        additional_env['ZENOH_SESSION_CONFIG_URI'] = str(zenoh_session_config_uri)
+
     # log format
     os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '{time} [{name}] [{severity}] {message}'
 
@@ -132,7 +139,8 @@ def _launch_node(context: LaunchContext):
                 respawn=respawn_bool,
                 emulate_tty=True,
                 prefix=launch_prefix,
-                parameters=parameters
+                parameters=parameters,
+                additional_env=additional_env
             ),
         ]
 

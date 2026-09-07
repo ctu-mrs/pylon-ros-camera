@@ -86,6 +86,40 @@ Generally speaking, to increase the acquisition frame rate when using the driver
 
 The interested readers can refer to the following discussions for more information: [#21](https://github.com/basler/pylon-ros-camera/issues/21), [#28](https://github.com/basler/pylon-ros-camera/issues/28), [#29](https://github.com/basler/pylon-ros-camera/issues/29), [#81](https://github.com/basler/pylon-ros-camera/issues/81), [#116](https://github.com/basler/pylon-ros-camera/issues/116), [#147](https://github.com/basler/pylon-ros-camera/issues/147), [#200](https://github.com/basler/pylon-ros-camera/issues/200).
 
+### High-rate image publishing
+
+High-bandwidth cameras can opt into a publisher path that keeps middleware
+serialization and subscriber backpressure off the acquisition thread. Existing
+configurations retain the legacy synchronous, reliable behavior by default.
+
+```yaml
+enable_async_image_publishing: true
+use_sensor_data_qos: true
+image_qos_depth: 10
+raw_publish_queue_depth: 1
+```
+
+When using `rmw_zenoh_cpp`, `zenoh_session_config_uri` can name a session file
+with shared memory enabled. The launch file applies it only to that camera
+process, before ROS initializes; it does not modify the caller's environment or
+other camera processes. See `config/rpi5_high_rate.yaml` for an example. Each
+high-bandwidth subscriber process must select the same Zenoh session file; peers
+that do not opt in continue to use normal network transport.
+
+```bash
+ros2 launch pylon_ros2_camera_wrapper pylon_ros2_camera.launch.py \
+  config_file:=/path/to/rpi5_high_rate.yaml
+
+ZENOH_SESSION_CONFIG_URI=/path/to/zenoh_shm_session.json5 \
+  ros2 run your_image_consumer your_image_consumer
+```
+
+At multi-megabyte image sizes, the Python `ros2 topic hz image_raw` command can
+become the receiver bottleneck and report dropped samples even when acquisition
+and a C++ subscriber sustain the configured rate. Use `ros2 topic hz
+.../camera_info` as a low-overhead acquisition-rate check, and validate the raw
+image path with the actual C++ consumer.
+
 ### Image pixel encoding (not for the blaze)
 
 The pylon ROS2 driver support currently the following ROS2 image pixel formats :
