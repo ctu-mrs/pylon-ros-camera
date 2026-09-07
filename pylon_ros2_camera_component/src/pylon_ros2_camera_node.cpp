@@ -289,8 +289,8 @@ PylonROS2CameraNode::PylonROS2CameraNode(const rclcpp::NodeOptions& options)
   //RCUTILS_LOG_SEVERITY_ERROR
   //RCUTILS_LOG_SEVERITY_FATAL
 
-  // Keep the legacy synchronous/reliable publisher as the default. High-rate
-  // camera profiles can opt in without changing behavior for existing users.
+  // Optional publication scheduling and QoS controls. Their defaults preserve
+  // the synchronous, reliable behavior used by existing parameter files.
   declareStartupParameterIfNeeded(*this, "enable_async_image_publishing", false);
   declareStartupParameterIfNeeded(*this, "use_sensor_data_qos", false);
   declareStartupParameterIfNeeded(*this, "image_qos_depth", 5);
@@ -323,7 +323,7 @@ PylonROS2CameraNode::PylonROS2CameraNode(const rclcpp::NodeOptions& options)
   if (this->async_image_publishing_)
   {
     // Keep middleware serialization and subscriber backpressure off the
-    // acquisition thread for high-bandwidth camera profiles.
+    // acquisition thread when bounded asynchronous publication is requested.
     this->raw_publish_thread_ = std::thread(&PylonROS2CameraNode::rawImagePublishLoop, this);
   }
   this->spin_thread_ = std::thread(&PylonROS2CameraNode::spin, this);

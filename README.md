@@ -86,39 +86,112 @@ Generally speaking, to increase the acquisition frame rate when using the driver
 
 The interested readers can refer to the following discussions for more information: [#21](https://github.com/basler/pylon-ros-camera/issues/21), [#28](https://github.com/basler/pylon-ros-camera/issues/28), [#29](https://github.com/basler/pylon-ros-camera/issues/29), [#81](https://github.com/basler/pylon-ros-camera/issues/81), [#116](https://github.com/basler/pylon-ros-camera/issues/116), [#147](https://github.com/basler/pylon-ros-camera/issues/147), [#200](https://github.com/basler/pylon-ros-camera/issues/200).
 
-### High-rate image publishing
+### Configuring image publication throughput and latency
 
-High-bandwidth cameras can opt into a publisher path that keeps middleware
-serialization and subscriber backpressure off the acquisition thread. Existing
-configurations retain the legacy synchronous, reliable behavior by default.
+The image publication controls are optional parameters that can be added under
+`ros__parameters` in any existing camera YAML. Their defaults preserve the
+driver's earlier synchronous, reliable behavior, so existing configurations do
+not change unless they explicitly opt in.
+
+- `enable_async_image_publishing` (default `false`) separates camera retrieval
+  from ROS publication. In synchronous mode, serialization, middleware work, or
+  subscriber backpressure can delay the next retrieval. Asynchronous mode lets
+  retrieval continue while a dedicated thread publishes the previous image.
+- `raw_publish_queue_depth` (default `1`, minimum `1`) bounds the hand-off queue
+  between retrieval and publication and is used only in asynchronous mode. If
+  it fills, the driver discards the oldest pending image. Depth 1 minimizes
+  latency and memory and is normally appropriate for live perception. A larger
+  value tolerates short publisher stalls, but can deliver older images and uses
+  roughly one additional image buffer per queued frame.
+- `use_sensor_data_qos` (default `false`) changes the image publisher from its
+  legacy reliable QoS to ROS sensor-data QoS (best effort and volatile). Best
+  effort prevents acknowledgements and retransmission of stale frames from
+  applying transport backpressure to a live stream. A subscriber must request
+  compatible QoS.
+- `image_qos_depth` (default `5`, minimum `1`) is the ROS middleware history
+  depth used when sensor-data QoS is enabled. It is independent of
+  `raw_publish_queue_depth`: one controls middleware history, the other controls
+  the driver's acquisition-to-publication hand-off.
+- `grab_strategy` controls the Pylon SDK retrieval policy. `0` (`OneByOne`)
+  preserves every camera buffer in order, while `1` (`LatestImageOnly`) favors
+  the newest frame if acquisition falls behind. Select it independently of ROS
+  QoS according to whether completeness or bounded live latency matters more.
+
+For example, the following values favor fresh images and prevent a slow
+publisher or subscriber from throttling acquisition. Copy only the parameters
+needed into the camera's normal configuration file; tune depths for the image
+size, available memory, and acceptable latency.
 
 ```yaml
-enable_async_image_publishing: true
-use_sensor_data_qos: true
-image_qos_depth: 10
-raw_publish_queue_depth: 1
+/**:
+  ros__parameters:
+    enable_async_image_publishing: true
+    raw_publish_queue_depth: 1
+    use_sensor_data_qos: true
+    image_qos_depth: 10
+    grab_strategy: 1
 ```
 
-When using `rmw_zenoh_cpp`, `zenoh_session_config_uri` can name a session file
-with shared memory enabled. The launch file applies it only to that camera
-process, before ROS initializes; it does not modify the caller's environment or
-other camera processes. See `config/rpi5_high_rate.yaml` for an example. Each
-high-bandwidth subscriber process must select the same Zenoh session file; peers
-that do not opt in continue to use normal network transport.
+This configuration keeps acquisition cadence and live latency bounded; it
+cannot make a consumer process faster than its own capacity. If publication or
+the subscriber falls behind, the bounded driver queue, latest-image Pylon
+strategy, and best-effort transport deliberately prefer current frames over
+delivering every frame. Use the synchronous/reliable defaults and sufficient
+buffering instead when every acquired frame must be delivered.
+
+When using `rmw_zenoh_cpp`, `zenoh_session_config_uri` may be set in the same
+camera YAML to an absolute Zenoh session configuration path. The wrapper launch
+file exports that value only to the camera process, before ROS initializes. An
+empty value inherits the caller's middleware setup. Directly running the
+component instead of this launch file does not consume the parameter early
+enough to configure the session; set `ZENOH_SESSION_CONFIG_URI` in that process's
+environment instead.
+
+Shared memory is negotiated per Zenoh session, not globally by this driver. To
+use it, configure the router (if present), camera publisher, and every intended
+high-bandwidth subscriber with compatible shared-memory-enabled session files.
+Setting the camera parameter does not modify other processes. Endpoints without
+that setup retain Zenoh's normal transport, and communication between hosts
+cannot use host-local shared memory.
+
+Manage the sessions as process startup configuration:
+
+1. Start the Zenoh router with its router configuration before starting the ROS
+   endpoints, if the deployment uses a router.
+2. Put `zenoh_session_config_uri` in each camera YAML launched by this wrapper.
+   Different cameras may opt in independently.
+3. Set `ZENOH_SESSION_CONFIG_URI` in the launch environment of each intended
+   subscriber or component container. All nodes in one process share that
+   process's RMW context, so session selection is per process rather than per
+   node.
+4. Restart a process after changing its session file or environment. Zenoh
+   reads the selection while the RMW context is created; changing the variable
+   in another shell or after node startup has no effect on that process.
+
+Avoid exporting the shared-memory session globally unless every ROS process in
+that environment should use it. Per-node launch `additional_env` entries or a
+service-specific environment keep unrelated and legacy deployments unchanged.
+
+```yaml
+/**:
+  ros__parameters:
+    zenoh_session_config_uri: /absolute/path/to/camera_session.json5
+```
 
 ```bash
 ros2 launch pylon_ros2_camera_wrapper pylon_ros2_camera.launch.py \
-  config_file:=/path/to/rpi5_high_rate.yaml
+  config_file:=/absolute/path/to/camera.yaml
 
-ZENOH_SESSION_CONFIG_URI=/path/to/zenoh_shm_session.json5 \
+ZENOH_SESSION_CONFIG_URI=/absolute/path/to/subscriber_session.json5 \
   ros2 run your_image_consumer your_image_consumer
 ```
 
 At multi-megabyte image sizes, the Python `ros2 topic hz image_raw` command can
-become the receiver bottleneck and report dropped samples even when acquisition
-and a C++ subscriber sustain the configured rate. Use `ros2 topic hz
-.../camera_info` as a low-overhead acquisition-rate check, and validate the raw
-image path with the actual C++ consumer.
+itself become the receiver bottleneck and report dropped samples even when the
+camera and a native subscriber sustain the configured rate. Use a lightweight
+topic such as `camera_info` to check acquisition cadence, and validate image
+throughput, end-to-end latency, and drops with the real consumer or a native
+benchmark subscriber.
 
 ### Image pixel encoding (not for the blaze)
 

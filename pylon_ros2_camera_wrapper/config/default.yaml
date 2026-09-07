@@ -48,16 +48,29 @@
     #  The maximum possible frame rate is displayed when starting the driver.
     frame_rate: -1.0
 
-    # High-rate publishing is opt-in so legacy camera configurations retain
-    # their synchronous image publisher behavior.
+    # Image publication pipeline. With the default false value, acquisition and
+    # ROS publication run synchronously as in earlier driver versions. Set true
+    # to move publication to a separate thread so a slow middleware path cannot
+    # stall camera retrieval. When its bounded queue is full, the oldest pending
+    # image is discarded; depth 1 therefore gives the freshest image and lowest
+    # latency, while a larger value absorbs short stalls at the cost of memory
+    # and latency. raw_publish_queue_depth is used only in asynchronous mode.
     enable_async_image_publishing: false
-    use_sensor_data_qos: false
-    image_qos_depth: 5
     raw_publish_queue_depth: 1
 
-    # Optional rmw_zenoh session file. The launch script applies this to only
-    # this camera process before ROS initializes. Leave empty for the caller's
-    # existing middleware configuration.
+    # Image publisher QoS. The default false value retains the earlier reliable
+    # publisher. Set true to use ROS sensor-data QoS (best effort, volatile),
+    # which is usually appropriate for live streams where fresh frames matter
+    # more than retransmitting old ones. image_qos_depth is the ROS middleware
+    # history depth and is separate from raw_publish_queue_depth; it is used only
+    # when use_sensor_data_qos is true. Subscribers must request compatible QoS.
+    use_sensor_data_qos: false
+    image_qos_depth: 5
+
+    # Optional rmw_zenoh session configuration URI. This wrapper's launch file
+    # exports it only to this camera process before ROS initializes. Empty means
+    # inherit the caller's middleware setup. Other endpoints (subscribers and a
+    # router, when used) must be configured separately; see the README.
     zenoh_session_config_uri: ""
 
     #  Mode of camera's shutter.
