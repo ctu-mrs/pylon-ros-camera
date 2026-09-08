@@ -233,7 +233,7 @@ protected:
    *
    * The queue is latest-frame-only. If the middleware cannot keep up, an old
    * unpublished frame is recycled so that the camera grab loop never waits on
-   * DDS/Zenoh serialization or a slow subscriber.
+   * middleware serialization or a slow subscriber.
    */
   void queueRawImage(sensor_msgs::msg::CameraInfo camera_info);
 

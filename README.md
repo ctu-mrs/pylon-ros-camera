@@ -139,51 +139,15 @@ strategy, and best-effort transport deliberately prefer current frames over
 delivering every frame. Use the synchronous/reliable defaults and sufficient
 buffering instead when every acquired frame must be delivered.
 
-When using `rmw_zenoh_cpp`, `zenoh_session_config_uri` may be set in the same
-camera YAML to an absolute Zenoh session configuration path. The wrapper launch
-file exports that value only to the camera process, before ROS initializes. An
-empty value inherits the caller's middleware setup. Directly running the
-component instead of this launch file does not consume the parameter early
-enough to configure the session; set `ZENOH_SESSION_CONFIG_URI` in that process's
-environment instead.
-
-Shared memory is negotiated per Zenoh session, not globally by this driver. To
-use it, configure the router (if present), camera publisher, and every intended
-high-bandwidth subscriber with compatible shared-memory-enabled session files.
-Setting the camera parameter does not modify other processes. Endpoints without
-that setup retain Zenoh's normal transport, and communication between hosts
-cannot use host-local shared memory.
-
-Manage the sessions as process startup configuration:
-
-1. Start the Zenoh router with its router configuration before starting the ROS
-   endpoints, if the deployment uses a router.
-2. Put `zenoh_session_config_uri` in each camera YAML launched by this wrapper.
-   Different cameras may opt in independently.
-3. Set `ZENOH_SESSION_CONFIG_URI` in the launch environment of each intended
-   subscriber or component container. All nodes in one process share that
-   process's RMW context, so session selection is per process rather than per
-   node.
-4. Restart a process after changing its session file or environment. Zenoh
-   reads the selection while the RMW context is created; changing the variable
-   in another shell or after node startup has no effect on that process.
-
-Avoid exporting the shared-memory session globally unless every ROS process in
-that environment should use it. Per-node launch `additional_env` entries or a
-service-specific environment keep unrelated and legacy deployments unchanged.
-
-```yaml
-/**:
-  ros__parameters:
-    zenoh_session_config_uri: /absolute/path/to/camera_session.json5
-```
+Zenoh session selection is process environment configuration, not a camera
+parameter. Set `ZENOH_SESSION_CONFIG_URI` in `.bashrc`, or export it in the
+current shell, before starting any ROS 2 nodes. The camera wrapper inherits the
+environment and does not interpret or override the session configuration.
 
 ```bash
+export ZENOH_SESSION_CONFIG_URI=/absolute/path/to/session.json5
 ros2 launch pylon_ros2_camera_wrapper pylon_ros2_camera.launch.py \
   config_file:=/absolute/path/to/camera.yaml
-
-ZENOH_SESSION_CONFIG_URI=/absolute/path/to/subscriber_session.json5 \
-  ros2 run your_image_consumer your_image_consumer
 ```
 
 At multi-megabyte image sizes, the Python `ros2 topic hz image_raw` command can

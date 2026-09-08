@@ -295,7 +295,6 @@ PylonROS2CameraNode::PylonROS2CameraNode(const rclcpp::NodeOptions& options)
   declareStartupParameterIfNeeded(*this, "use_sensor_data_qos", false);
   declareStartupParameterIfNeeded(*this, "image_qos_depth", 5);
   declareStartupParameterIfNeeded(*this, "raw_publish_queue_depth", 1);
-  declareStartupParameterIfNeeded(*this, "zenoh_session_config_uri", std::string{});
   this->async_image_publishing_ =
     this->get_parameter("enable_async_image_publishing").as_bool();
   this->use_sensor_data_qos_ =
@@ -308,8 +307,6 @@ PylonROS2CameraNode::PylonROS2CameraNode(const rclcpp::NodeOptions& options)
     this->get_parameter("raw_publish_queue_depth").as_int();
   this->raw_publish_queue_depth_ =
     static_cast<std::size_t>(std::max(1, raw_publish_queue_depth));
-  // Launch consumes zenoh_session_config_uri before process startup. Keeping
-  // it declared here lets it live in the same per-camera ROS parameter file.
 
   // initializing the interfaces
   this->initInterfaces();
