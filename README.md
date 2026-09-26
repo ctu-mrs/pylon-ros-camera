@@ -1,3 +1,5 @@
+![ROS Package Build](https://github.com/ctu-mrs/pylon-ros-camera/actions/workflows/ros_package_build.yml/badge.svg)
+
 # MRS ROS2-Driver for Basler Cameras
 
 The MRS fork of the official pylon ROS2 driver for [Basler](http://www.baslerweb.com/) GigE Vision, Basler USB3 Vision and Basler blaze 3D cameras (Jazzy Jalisco)
@@ -16,12 +18,18 @@ Download the Pylon SDK from the Basler website:
 
 Or obtain all dependencies via [private MRS PPA](https://mrs.fel.cvut.cz/gitlab/internal/ppa-private) using `sudo apt install -y pylon*`.
 
-### Install and build the packages
+### Install
 
-Clone this repository and build it in your ROS 2 workspace.
-
-Start the driver:  
+The easiest way to obtain the packages is from MRS PPA:
+```bash
+sudo apt update
+sudo apt install ros-jazzy-pylon-ros2-camera-component ros-jazzy-pylon-ros2-camera-interfaces ros-jazzy-pylon-ros2-camera-wrapper
 ```
+
+Optionally, you may clone this repository and build it in your ROS 2 workspace.
+
+Finally, start the wrapper node:  
+```bash
 ros2 launch pylon_ros2_camera_wrapper pylon_ros2_camera.launch.py
 ```
 
